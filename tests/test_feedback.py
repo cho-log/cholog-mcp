@@ -204,6 +204,29 @@ def test_대표_리뷰는_서로_다른_PR에서_점수가_큰_순으로_고른�
     assert examples[1]["url"].endswith(f"#discussion_r{best_of_pr2}")
 
 
+def test_대표_리뷰는_다른_주제에서_쓰지_않은_PR을_먼저_고른다(db):
+    db.pr(1, "learner1")
+    db.pr(2, "learner2")
+    db.comment(1, "reviewer", {"naming": 9, "responsibility": 9})
+    db.comment(1, "reviewer", {"naming": 1})  # naming이 PR 수는 같고 코멘트가 많아 먼저 온다
+    db.comment(2, "reviewer", {"naming": 1, "responsibility": 1})
+
+    result = db.ask(examples_per_topic=1)
+
+    assert [e["pr"] for e in topic(result, "naming")["examples"]] == [1]
+    assert [e["pr"] for e in topic(result, "responsibility")["examples"]] == [2]
+
+
+def test_쓰지_않은_PR이_모자라면_이미_쓴_PR에서도_고른다(db):
+    db.pr(1, "learner1")
+    db.comment(1, "reviewer", {"naming": 1, "responsibility": 1})
+    db.comment(1, "reviewer", {"naming": 1})
+
+    result = db.ask(examples_per_topic=1)
+
+    assert [e["pr"] for e in topic(result, "responsibility")["examples"]] == [1]
+
+
 def test_대표_리뷰는_300자_이하이고_링크와_리뷰어와_파일이_있다(db):
     db.pr(1, "learner")
     db.comment(1, "reviewer", {"naming": 1}, body="가" * 1000)
@@ -216,9 +239,9 @@ def test_대표_리뷰는_300자_이하이고_링크와_리뷰어와_파일이_�
     assert example["path"] == "Car.java"
 
 
-def test_대표_리뷰에서_인용한_줄은_빼고_빈_줄은_줄인다(db):
+def test_대표_리뷰에서_인용한_줄은_빼고_빈_줄과_이어진_공백은_줄인다(db):
     db.pr(1, "learner")
-    db.comment(1, "reviewer", {"naming": 1}, body="> 이름을 어떻게 지으면 좋을까요?\r\n\r\n\r\n역할이 드러나게 지어 보세요.\r\n\r\n\r\n예를 들면 이렇습니다.")
+    db.comment(1, "reviewer", {"naming": 1}, body="> 이름을 어떻게 지으면 좋을까요?\r\n\r\n\r\n역할이 드러나게      지어 보세요.\r\n\r\n\r\n예를 들면 이렇습니다.")
 
     example = topic(db.ask(), "naming")["examples"][0]
 

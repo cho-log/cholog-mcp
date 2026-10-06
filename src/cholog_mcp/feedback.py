@@ -16,6 +16,7 @@ DEFAULT_NOTE = "주제가 붙지 않은 리뷰가 {untagged}개 있다."
 
 _QUOTE_LINE = re.compile(r"^\s*>.*$", re.MULTILINE)
 _BLANK_LINES = re.compile(r"\n\s*\n+")
+_SPACES = re.compile(r"[ \t]{2,}")
 _AUTHOR_SEPARATOR = re.compile(r"[\s,]+")
 
 
@@ -50,6 +51,26 @@ def get_repeated_feedback(
         key=lambda topic_id: (-stats.topic_prs[topic_id], -stats.topic_comments[topic_id], topic_id),
     )[:max_topics]
 
+    topics = []
+    example_prs: set[int] = set()
+    for topic_id in concepts:
+        examples = _pick_examples(conn, mission, pr_numbers, topic_id, examples_per_topic, example_prs)
+        example_prs.update(example["pr"] for example in examples)
+        topics.append({
+            "id": topic_id,
+            "name": names[topic_id][1],
+            "pr_count": stats.topic_prs[topic_id],
+            "pr_ratio": _ratio(stats.topic_prs[topic_id], stats.reviewed_prs),
+            "comment_count": stats.topic_comments[topic_id],
+            "overall_pr_ratio": _ratio(overall.topic_prs.get(topic_id, 0), overall.reviewed_prs) if overall else None,
+            "subtopics": [
+                {"id": sub_id, "name": names[sub_id][1], "pr_count": stats.topic_prs[sub_id]}
+                for sub_id in sorted(stats.topic_prs, key=lambda sub_id: (-stats.topic_prs[sub_id], sub_id))
+                if names[sub_id][0] == topic_id
+            ],
+            "examples": examples,
+        })
+
     return {
         "scope": {
             "mission": mission,
@@ -61,25 +82,7 @@ def get_repeated_feedback(
             "data_as_of": mission_row[0],
         },
         "counting": _describe_counting(conn, mission, stats.untagged_comments),
-        "topics": [
-            {
-                "id": topic_id,
-                "name": names[topic_id][1],
-                "pr_count": stats.topic_prs[topic_id],
-                "pr_ratio": _ratio(stats.topic_prs[topic_id], stats.reviewed_prs),
-                "comment_count": stats.topic_comments[topic_id],
-                "overall_pr_ratio": (
-                    _ratio(overall.topic_prs.get(topic_id, 0), overall.reviewed_prs) if overall else None
-                ),
-                "subtopics": [
-                    {"id": sub_id, "name": names[sub_id][1], "pr_count": stats.topic_prs[sub_id]}
-                    for sub_id in sorted(stats.topic_prs, key=lambda sub_id: (-stats.topic_prs[sub_id], sub_id))
-                    if names[sub_id][0] == topic_id
-                ],
-                "examples": _pick_examples(conn, mission, pr_numbers, topic_id, examples_per_topic),
-            }
-            for topic_id in concepts
-        ],
+        "topics": topics,
     }
 
 
@@ -152,9 +155,17 @@ def _find_prs(
 
 
 def _pick_examples(
-    conn: sqlite3.Connection, mission: str, pr_numbers: list[int], topic_id: str, limit: int
+    conn: sqlite3.Connection,
+    mission: str,
+    pr_numbers: list[int],
+    topic_id: str,
+    limit: int,
+    used_elsewhere: set[int],
 ) -> list[dict]:
-    """서로 다른 PR에서 하나씩, 관련도(score)가 큰 순으로 고른다."""
+    """서로 다른 PR에서 하나씩, 관련도(score)가 큰 순으로 고른다.
+
+    여러 주제의 대표 리뷰가 몇몇 PR에 몰리지 않도록, 다른 주제에서 아직 쓰지 않은 PR을 먼저 고른다.
+    """
     if limit == 0:
         return []
     where, params = _reviewer_comments_in(mission, pr_numbers)
@@ -164,28 +175,25 @@ def _pick_examples(
         "AND LENGTH(TRIM(c.body)) >= ? ORDER BY ct.score DESC, c.id",
         [*params, topic_id, EXAMPLE_MIN_LENGTH],
     )
-    examples: list[dict] = []
-    used_prs: set[int] = set()
+    # PR마다 관련도가 가장 큰 리뷰 하나만 남긴다. 순서는 관련도가 큰 순이다.
+    best_per_pr: dict[int, dict] = {}
     for pr_number, reviewer, path, body, url in rows:
-        if pr_number in used_prs:
-            continue
-        used_prs.add(pr_number)
-        examples.append({
+        best_per_pr.setdefault(pr_number, {
             "pr": pr_number,
             "reviewer": reviewer,
             "path": path,
             "excerpt": _excerpt(body),
             "url": url,
         })
-        if len(examples) == limit:
-            break
-    return examples
+    fresh = [example for pr_number, example in best_per_pr.items() if pr_number not in used_elsewhere]
+    reused = [example for pr_number, example in best_per_pr.items() if pr_number in used_elsewhere]
+    return (fresh + reused)[:limit]
 
 
 def _excerpt(body: str) -> str:
-    """리뷰어 자신의 말만 앞에서부터 자른다. 인용한 줄(>)은 빼고 빈 줄은 하나로 줄인다."""
+    """리뷰어 자신의 말만 앞에서부터 자른다. 인용한 줄(>)은 빼고 빈 줄과 이어진 공백은 하나로 줄인다."""
     body = _QUOTE_LINE.sub("", body.replace("\r\n", "\n"))
-    body = _BLANK_LINES.sub("\n\n", body).strip()
+    body = _SPACES.sub(" ", _BLANK_LINES.sub("\n\n", body)).strip()
     if len(body) <= EXCERPT_MAX_LENGTH:
         return body
     return body[: EXCERPT_MAX_LENGTH - 1] + "…"
