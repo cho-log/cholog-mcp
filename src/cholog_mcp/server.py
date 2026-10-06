@@ -8,6 +8,7 @@ from datetime import date
 from typing import Annotated
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import Field
 
 from cholog_mcp import feedback
@@ -46,7 +47,11 @@ def create_server() -> MCPServer:
 
         숫자는 키워드로 센 값이라 실제보다 적다. 답할 때 대략적인 값임을 밝히고, 대표 리뷰의 링크를 함께 보여준다.
         """
-        with open_db() as conn:
-            return feedback.get_repeated_feedback(conn, mission, authors, since, max_topics, examples_per_topic)
+        try:
+            with open_db() as conn:
+                return feedback.get_repeated_feedback(conn, mission, authors, since, max_topics, examples_per_topic)
+        except (FileNotFoundError, ValueError) as error:
+            # 예상한 실패는 이유를 그대로 돌려준다. 그 밖의 예외는 SDK가 내용을 가리고 로그에만 남긴다.
+            raise ToolError(str(error)) from error
 
     return server
