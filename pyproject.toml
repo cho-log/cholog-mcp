@@ -7,7 +7,9 @@ authors = [
     { name = "yesjuhee", email = "juhee0924@g.skku.edu" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "mcp==2.2.0",
+]
 
 [project.scripts]
 cholog-mcp = "cholog_mcp:main"
@@ -15,3 +17,12 @@ cholog-mcp = "cholog_mcp:main"
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
