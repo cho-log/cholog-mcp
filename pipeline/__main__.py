@@ -14,7 +14,7 @@ from pathlib import Path
 from cholog_mcp.config import db_path
 from pipeline.fetch import fetch_mission
 from pipeline.load import load_mission
-from pipeline.missions import MISSIONS
+from cholog_mcp.missions import MISSIONS
 from pipeline.schema import create_schema
 from pipeline.tagger import tag_mission
 from pipeline.verify import verify_mission

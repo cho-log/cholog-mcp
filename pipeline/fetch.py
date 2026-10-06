@@ -9,7 +9,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from pipeline.missions import Mission
+from cholog_mcp.missions import Mission
 
 PR_FIELDS = "additions,author,baseRefName,changedFiles,createdAt,deletions,number,state,title"
 # GitHub API 경로: 코드 줄에 단 리뷰는 pulls, PR 대화는 issues 아래에 있다.

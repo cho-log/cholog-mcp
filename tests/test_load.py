@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.load import load_mission, read_json_arrays
-from pipeline.missions import Mission
+from cholog_mcp.missions import Mission
 from pipeline.schema import create_schema
 
 MISSION = Mission(id="test-mission", repo="owner/repo", name="테스트 미션")

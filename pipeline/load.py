@@ -9,7 +9,7 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-from pipeline.missions import Mission
+from cholog_mcp.missions import Mission
 
 KINDS = ("review", "issue")
 

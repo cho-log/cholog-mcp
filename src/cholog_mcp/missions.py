@@ -1,6 +1,10 @@
-"""지원하는 미션. 미션을 추가할 때 여기에 한 줄을 더한다."""
+"""지원하는 미션. 미션을 추가할 때 MissionId와 MISSIONS를 함께 고친다."""
 
 from dataclasses import dataclass
+from typing import Literal
+
+# 도구가 입력으로 받는 값. 도구의 입력 스키마에 그대로 드러난다.
+MissionId = Literal["java-racingcar"]
 
 
 @dataclass(frozen=True)

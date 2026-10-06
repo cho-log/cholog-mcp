@@ -18,6 +18,29 @@
 | `pipeline/` | PR·리뷰 데이터 수집과 SQLite 적재 |
 | `data/` | 수집한 원본과 SQLite 파일. git에 올리지 않는다 |
 | `tests/` | 테스트 |
+| `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
+
+## 작업 순서
+
+명세가 기준이다. 도구를 만들거나 고칠 때 이 순서를 지킨다.
+
+1. `docs/tool-spec.md`에 입력, 출력, 규칙, 검증 기준을 먼저 쓴다.
+2. 검증 기준을 테스트로 옮긴다 (`tests/`). 실제 데이터는 저장소에 없으므로 테스트는 직접 만든 작은 데이터를 쓴다.
+3. 테스트가 통과하도록 구현한다 (`uv run pytest`).
+4. 구현하다가 명세와 달라지면 명세를 먼저 고친다.
+
+## 코드 구조
+
+| 파일 | 역할 |
+|---|---|
+| `src/cholog_mcp/feedback.py` | 도구 로직. DB 연결을 받아 결과를 만든다. MCP를 모른다 |
+| `src/cholog_mcp/server.py` | 도구를 MCP 서버에 등록한다. 입력 스키마와 도구 설명을 정한다 |
+| `src/cholog_mcp/__init__.py` | 서버를 띄운다 (지금은 stdio) |
+| `src/cholog_mcp/missions.py` | 지원하는 미션 목록 |
+| `pipeline/topics.py` | 키워드 분류에 쓰는 주제 사전 |
+| `pipeline/tagger.py` | 리뷰에 주제를 붙여 `comment_topics`에 쓴다 |
+
+도구는 `comment_topics` 테이블만 읽는다. 분류 방법을 바꿀 때 도구 코드를 고치지 않는다.
 
 ## 설계 원칙
 

@@ -15,6 +15,7 @@
 | `pipeline/` | PR·리뷰 데이터 수집과 SQLite 적재 |
 | `data/` | 수집한 원본과 SQLite 파일 (git에 올리지 않는다) |
 | `tests/` | 테스트 |
+| `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
 
 ## 개발 환경
 
@@ -37,3 +38,20 @@ uv run python -m pipeline verify java-racingcar   # 기준값과 비교한다
 ```
 
 SQLite 파일의 위치는 환경 변수 `CHOLOG_DB_PATH`로 바꿀 수 있다.
+
+## 서버 실행
+
+데이터를 준비한 뒤, 서버가 뜨고 도구가 불리는지 확인한다.
+
+```bash
+uv run python scripts/smoke.py                # 미션 전체
+uv run python scripts/smoke.py id1 id2 id3    # 이 GitHub ID들의 PR만
+```
+
+Claude Code에 연결하려면 이 저장소의 절대 경로를 넣어 등록한다.
+
+```bash
+claude mcp add cholog -- uv run --directory /저장소/절대/경로 cholog-mcp
+```
+
+도구의 입력과 출력은 [docs/tool-spec.md](docs/tool-spec.md)에 있다.
