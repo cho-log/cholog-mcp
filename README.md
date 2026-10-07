@@ -10,7 +10,7 @@
 
 | 경로 | 내용 |
 |---|---|
-| `docs/` | 도구 명세, 개발 안내 |
+| `docs/` | [도구 명세](docs/tool-spec.md), [결정과 이유](docs/decisions.md), [기록](docs/records/README.md) |
 | `src/cholog_mcp/` | MCP 서버. 도구 로직과 실행 방식(stdio, HTTP)을 분리한다 |
 | `pipeline/` | PR·리뷰 데이터 수집과 SQLite 적재 |
 | `data/` | 수집한 원본과 SQLite 파일 (git에 올리지 않는다) |
