@@ -170,16 +170,19 @@ def _pick_examples(
         return []
     where, params = _reviewer_comments_in(mission, pr_numbers)
     rows = conn.execute(
-        "SELECT c.pr_number, c.author, c.path, c.body, c.url FROM comment_topics ct "
-        f"JOIN comments c ON c.id = ct.comment_id WHERE {where} AND ct.topic_id = ? "
+        "SELECT c.pr_number, pr.author, c.author, c.path, c.body, c.url FROM comment_topics ct "
+        "JOIN comments c ON c.id = ct.comment_id "
+        "JOIN pull_requests pr ON pr.mission_id = c.mission_id AND pr.number = c.pr_number "
+        f"WHERE {where} AND ct.topic_id = ? "
         "AND LENGTH(TRIM(c.body)) >= ? ORDER BY ct.score DESC, c.id",
         [*params, topic_id, EXAMPLE_MIN_LENGTH],
     )
     # PR마다 관련도가 가장 큰 리뷰 하나만 남긴다. 순서는 관련도가 큰 순이다.
     best_per_pr: dict[int, dict] = {}
-    for pr_number, reviewer, path, body, url in rows:
+    for pr_number, author, reviewer, path, body, url in rows:
         best_per_pr.setdefault(pr_number, {
             "pr": pr_number,
+            "author": author,
             "reviewer": reviewer,
             "path": path,
             "excerpt": _excerpt(body),

@@ -33,6 +33,8 @@ def test_도구_목록에_설명과_입력_스키마가_보인다():
     assert tool.name == "get_repeated_feedback"
     assert tool.title == "반복 지적된 리뷰 주제"
     assert "이럴 때 쓴다" in tool.description
+    assert "분모는 리뷰어 코멘트가 달린 PR 수" in tool.description
+    assert "overall_pr_ratio" in tool.description
     assert tool.input_schema["required"] == ["mission"]
     assert set(tool.input_schema["properties"]) == {"mission", "authors", "since", "max_topics", "examples_per_topic"}
 

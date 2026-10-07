@@ -227,7 +227,7 @@ def test_쓰지_않은_PR이_모자라면_이미_쓴_PR에서도_고른다(db):
     assert [e["pr"] for e in topic(result, "responsibility")["examples"]] == [1]
 
 
-def test_대표_리뷰는_300자_이하이고_링크와_리뷰어와_파일이_있다(db):
+def test_대표_리뷰는_300자_이하이고_링크와_작성자와_리뷰어와_파일이_있다(db):
     db.pr(1, "learner")
     db.comment(1, "reviewer", {"naming": 1}, body="가" * 1000)
 
@@ -235,6 +235,7 @@ def test_대표_리뷰는_300자_이하이고_링크와_리뷰어와_파일이_�
 
     assert len(example["excerpt"]) == 300
     assert example["url"] == "https://github.com/owner/repo/pull/1#discussion_r1"
+    assert example["author"] == "learner"
     assert example["reviewer"] == "reviewer"
     assert example["path"] == "Car.java"
 

@@ -46,6 +46,13 @@ def create_server() -> MCPServer:
         - 미션을 시작하기 전에 과거 참가자들이 자주 지적받은 점을 알고 싶을 때 (authors를 비운다)
 
         숫자는 키워드로 센 값이라 실제보다 적다. 답할 때 대략적인 값임을 밝히고, 대표 리뷰의 링크를 함께 보여준다.
+
+        돌려주는 값 읽는 법:
+        - pr_count, pr_ratio: 이 주제를 지적받은 PR 수와 비율. 비율의 분모는 리뷰어 코멘트가 달린 PR 수(scope.reviewed_pr_count)다.
+        - overall_pr_ratio: 같은 미션의 과거 참가자 전체에서 이 주제를 지적받은 PR 비율. authors를 줬을 때만 채워진다.
+          pr_ratio가 이 값보다 크면 이 스터디가 유독 많이 지적받은 주제다.
+        - subtopics: 주제 안의 세부 지적. 아직 일부 주제에만 있다.
+        - examples: 대표 리뷰. author는 리뷰를 받은 PR 작성자, reviewer는 리뷰를 쓴 사람이다. excerpt는 앞부분만 자른 것이다.
         """
         try:
             with open_db() as conn:
