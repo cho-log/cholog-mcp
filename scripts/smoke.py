@@ -1,4 +1,4 @@
-"""서버를 stdio로 띄워 실제 MCP 클라이언트로 불러 본다 (docs/tool-spec.md 검증 기준 7-4).
+"""서버를 stdio로 띄워 실제 MCP 클라이언트로 불러 본다 (docs/tool-spec.md 검증 기준 8-4).
 
     uv run python scripts/smoke.py                        미션 전체
     uv run python scripts/smoke.py id1 id2 id3            이 GitHub ID들의 PR만

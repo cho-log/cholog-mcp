@@ -1,4 +1,4 @@
-"""도구가 MCP 서버에 등록된 모습 (docs/tool-spec.md 7-4)."""
+"""도구가 MCP 서버에 등록된 모습 (docs/tool-spec.md 8-4)."""
 
 import sqlite3
 

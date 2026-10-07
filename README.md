@@ -37,7 +37,7 @@ uv run python -m pipeline tag java-racingcar      # 리뷰에 주제를 붙인�
 uv run python -m pipeline verify java-racingcar   # 기준값과 비교한다
 ```
 
-SQLite 파일의 위치는 환경 변수 `CHOLOG_DB_PATH`로 바꿀 수 있다.
+SQLite 파일의 위치는 환경 변수 `CHOLOG_DB_PATH`로 바꿀 수 있다. 각 명령이 하는 일은 [docs/tool-spec.md](docs/tool-spec.md)의 5번 파이프라인에 있다.
 
 ## 서버 실행
 

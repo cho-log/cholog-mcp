@@ -1,4 +1,4 @@
-"""get_repeated_feedback의 검증 기준 (docs/tool-spec.md 7-3)."""
+"""get_repeated_feedback의 검증 기준 (docs/tool-spec.md 8-3)."""
 
 import sqlite3
 from datetime import date
