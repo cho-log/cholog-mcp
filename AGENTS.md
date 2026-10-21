@@ -66,6 +66,7 @@
 - `main`에 직접 푸시하지 않는다. 브랜치를 만들고 PR로 올린다.
 - 브랜치 이름: `종류/주제` (예: `feat/web-deploy`, `docs/tool-spec`).
 - PR은 스쿼시 머지한다. 머지 커밋 없이 선형 히스토리를 유지한다.
+- PR은 CI(`test` 체크: `uv sync --locked` 후 `uv run pytest`)를 통과해야 머지할 수 있다. 실패하면 로컬에서 `uv run pytest`로 재현한다.
 - 커밋 메시지: `종류: 한국어 요약`. 종류는 `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
 - 커밋은 사용자가 요청할 때만 한다.
 
