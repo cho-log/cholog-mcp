@@ -1,0 +1,8 @@
+# 이미지에 넣을 것만 연다.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!data/cholog.db
+**/__pycache__
