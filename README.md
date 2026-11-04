@@ -16,6 +16,7 @@
 | `data/` | 수집한 원본과 SQLite 파일 (git에 올리지 않는다) |
 | `tests/` | 테스트 |
 | `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
+| `infra/` | AWS Lambda 배포 (Terraform). [배포 순서](infra/README.md) |
 
 ## 개발 환경
 
@@ -70,5 +71,16 @@ claude mcp add --transport http cholog http://127.0.0.1:8080/mcp
 | `CHOLOG_ALLOWED_HOSTS` | 로컬 주소 | 받을 Host 헤더 값, 쉼표로 구분. 배포할 땐 서버의 도메인을 넣는다 |
 
 요청마다 독립(stateless)이고 응답은 JSON 한 덩어리다. Origin이 붙은 브라우저 요청과 POST가 아닌 요청은 거절한다.
+
+### 컨테이너로 실행
+
+배포(Lambda)에 쓰는 이미지다. 데이터(`data/cholog.db`)를 이미지에 넣으므로, 데이터를 먼저 준비해야 빌드된다.
+
+```bash
+docker build --platform linux/arm64 -t cholog-mcp:local .
+docker run --rm --read-only -p 8080:8080 cholog-mcp:local     # http://localhost:8080/mcp
+```
+
+`--read-only`는 Lambda처럼 파일 시스템에 쓸 수 없게 막는다. 이미지 안의 [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter)는 Lambda 이벤트를 HTTP 요청으로 바꿔 서버에 넘기고, Lambda 밖에서는 아무 일도 하지 않는다.
 
 도구의 입력과 출력은 [docs/tool-spec.md](docs/tool-spec.md)에 있다.

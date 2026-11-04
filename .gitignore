@@ -22,3 +22,10 @@ data/*
 
 # AI 도구의 개인 설정
 .claude/settings.local.json
+
+# Terraform: state(실제 자원과의 대응표)와 개인 값(tfvars)은 올리지 않는다
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/terraform.tfvars
+infra/.build/

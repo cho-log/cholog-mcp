@@ -19,6 +19,7 @@
 | `data/` | 수집한 원본과 SQLite 파일. git에 올리지 않는다 |
 | `tests/` | 테스트 |
 | `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
+| `infra/` | AWS Lambda 배포 (Terraform). state와 `terraform.tfvars`는 git에 올리지 않는다 |
 
 ## 작업 순서
 

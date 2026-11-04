@@ -1,0 +1,4 @@
+# terraform.tfvars로 복사해서 쓴다. terraform.tfvars는 git에 올리지 않는다.
+image_tag     = "ab269df"
+alert_email   = "you@example.com"
+allowed_hosts = [] # 첫 apply 뒤 output function_url_host 값을 넣는다
