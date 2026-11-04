@@ -35,7 +35,8 @@
 |---|---|
 | `src/cholog_mcp/feedback.py` | 도구 로직. DB 연결을 받아 결과를 만든다. MCP를 모른다 |
 | `src/cholog_mcp/server.py` | 도구를 MCP 서버에 등록한다. 입력 스키마와 도구 설명을 정한다 |
-| `src/cholog_mcp/__init__.py` | 서버를 띄운다 (지금은 stdio) |
+| `src/cholog_mcp/__init__.py` | 서버를 띄운다. `main`은 stdio, `main_http`는 HTTP |
+| `src/cholog_mcp/config.py` | 실행 환경에서 받는 설정 (DB 경로, HTTP 주소와 허용 Host) |
 | `src/cholog_mcp/missions.py` | 지원하는 미션 목록 |
 | `pipeline/topics.py` | 키워드 분류에 쓰는 주제 사전 |
 | `pipeline/tagger.py` | 리뷰에 주제를 붙여 `comment_topics`에 쓴다 |
