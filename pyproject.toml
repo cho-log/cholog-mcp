@@ -9,10 +9,12 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "mcp==2.2.0",
+    "uvicorn==0.54.0",
 ]
 
 [project.scripts]
 cholog-mcp = "cholog_mcp:main"
+cholog-mcp-http = "cholog_mcp:main_http"
 
 [build-system]
 requires = ["uv_build>=0.12.21,<0.13.0"]

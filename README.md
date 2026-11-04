@@ -54,4 +54,21 @@ Claude Code에 연결하려면 이 저장소의 절대 경로를 넣어 등록�
 claude mcp add cholog -- uv run --directory /저장소/절대/경로 cholog-mcp
 ```
 
+### HTTP로 실행
+
+원격에서 쓰도록 HTTP로 띄울 수도 있다. AI 앱은 `http://주소:포트/mcp`로 연결한다.
+
+```bash
+uv run cholog-mcp-http                                   # http://127.0.0.1:8080/mcp
+claude mcp add --transport http cholog http://127.0.0.1:8080/mcp
+```
+
+| 환경 변수 | 기본값 | 내용 |
+|---|---|---|
+| `CHOLOG_HTTP_HOST` | `127.0.0.1` | 요청을 받을 주소. 배포할 땐 `0.0.0.0` |
+| `CHOLOG_HTTP_PORT` | `8080` | 포트 |
+| `CHOLOG_ALLOWED_HOSTS` | 로컬 주소 | 받을 Host 헤더 값, 쉼표로 구분. 배포할 땐 서버의 도메인을 넣는다 |
+
+요청마다 독립(stateless)이고 응답은 JSON 한 덩어리다. Origin이 붙은 브라우저 요청과 POST가 아닌 요청은 거절한다.
+
 도구의 입력과 출력은 [docs/tool-spec.md](docs/tool-spec.md)에 있다.
