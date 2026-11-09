@@ -145,7 +145,7 @@ Spring으로 비유하면 이렇다.
           "reviewer": "reviewer-id",
           "path": "src/main/java/Car.java",
           "excerpt": "리뷰 본문 앞부분 (최대 300자)",
-          "url": "https://github.com/next-step/java-racingcar-simple-playground/pull/190#discussion_r0000000000"
+          "url": "https://github.com/cho-log/java-racingcar-simple-playground/pull/190#discussion_r0000000000"
         }
       ]
     }
@@ -270,11 +270,13 @@ flowchart LR
         T2["topics<br/>comment_topics"]
     end
     V["기준값과 비교"]
+    C["기본 점검"]
 
     GH -- "fetch" --> RAW
     RAW -- "load" --> T1
     T1 -- "tag" --> T2
     T2 -- "verify" --> V
+    T2 -- "check" --> C
 ```
 
 | 명령 | 하는 일 | 읽는 것 | 쓰는 것 | 코드 |
@@ -283,6 +285,7 @@ flowchart LR
 | `load` | 원본을 테이블에 넣는다 | `data/raw/<미션>/` | `missions`, `pull_requests`, `comments` | `load.py` |
 | `tag` | 리뷰어 코멘트에 주제를 붙인다 | `comments` | `topics`, `comment_topics` | `tagger.py`, `topics.py` |
 | `verify` | 결과를 기준값과 비교한다 | 테이블 전체 | 없음 (화면에 출력) | `verify.py` |
+| `check` | 데이터가 망가지지 않았는지 기본 점검을 한다 | 테이블 전체 | 없음 (화면에 출력) | `check.py` |
 
 모두 `uv run python -m pipeline <명령> <미션>` 형태로 돌린다. 예: `uv run python -m pipeline tag java-racingcar`
 
@@ -357,11 +360,38 @@ GitHub CLI(`gh`)로 받는다. 먼저 `gh auth login`으로 로그인해 둔다.
 - 주제 사전을 고쳤으면 `tag` 뒤에 `verify`를 돌려, 고치려던 숫자만 바뀌었는지 본다.
 - 데이터를 새로 수집하면 PR과 코멘트가 늘어 기준값과 달라진다. 달라진 이유를 확인하고 기준값을 고친다.
 
+### check: 기본 점검
+
+배포 전에 자동으로 돌리는 점검이다. 기준값 없이, 어느 미션에나 늘 맞아야 하는 것만 본다. 하나라도 어긋나면 실패(종료 코드 1)로 끝나 배포를 막는다.
+
+| 항목 | 맞아야 하는 것 | 어긋나면 의심할 것 |
+|---|---|---|
+| 수집 시각 | `missions.synced_at`이 있다 | `load`를 돌리지 않았다 |
+| PR | 1개 이상 | 수집이나 적재가 비었다 |
+| 리뷰어 코멘트 | 1개 이상 | 코멘트 수집이 비었다 |
+| 원문 링크가 없는 코멘트 | 0개 | 원본 형식이 바뀌었다 |
+| 주제가 붙은 리뷰어 코멘트 | 1개 이상 | `load` 뒤에 `tag`를 돌리지 않았다 |
+
+`--previous <직전 DB>`를 주면 직전 데이터와도 비교한다. 수집이 중간에 끊겨 덜 들어온 것을 막는다.
+
+| 항목 | 맞아야 하는 것 | 이유 |
+|---|---|---|
+| 직전 대비 PR | 5개 이상 줄지 않았다 | PR은 거의 지워지지 않는다. 수집이 끊기면 보통 수십 개 단위로 빠진다 |
+| 직전 대비 코멘트 | 1% 넘게 줄지 않았다 | 코멘트는 지워질 수 있어서 조금 줄어드는 것은 정상이다 |
+
+직전 DB에 없던 미션은 직전 값이 0이라 늘 통과한다. 배포 워크플로는 직전에 성공한 실행의 DB를 내려받아 넘기고, 없으면(첫 실행, 보관 기간 만료) 비교를 건너뛴다.
+
+PR이나 코멘트가 실제로 많이 지워져서 비교가 정당하게 실패하면, 그 뒤의 실행도 같은 직전 DB와 비교해 계속 실패한다. 이때는 확인한 뒤 배포 워크플로를 수동 실행하면서 "직전 비교 건너뛰기"를 고른다. 그 실행이 성공하면 다음부터는 그 DB가 직전이 된다.
+
+`check`는 DB를 읽기만 한다. DB 파일이 없으면 새로 만들지 않고 실패한다.
+
+`verify`와 다른 점: `verify`는 손으로 분석한 기준값과 숫자를 맞춰 분류가 의도대로 바뀌었는지 본다. 데이터를 새로 받으면 숫자가 달라지므로 배포 점검에는 쓰지 않는다.
+
 ### 언제 무엇을 다시 돌리나
 
 | 상황 | 돌릴 명령 |
 |---|---|
-| 새 PR이나 리뷰가 달렸다 | `fetch` → `load` → `tag` |
+| 새 PR이나 리뷰가 달렸다 | `fetch` → `load` → `tag` → `check` |
 | 테이블 구조를 바꿨다 | `load` → `tag` |
 | 주제 사전을 고쳤다 (키워드, 세부 지적) | `tag` → `verify` |
 | 분류 방법을 바꿨다 | `tag` → `verify` |

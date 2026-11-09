@@ -19,7 +19,7 @@ MISSIONS = {
     for mission in (
         Mission(
             id="java-racingcar",
-            repo="next-step/java-racingcar-simple-playground",
+            repo="cho-log/java-racingcar-simple-playground",
             name="자바 자동차 경주",
         ),
     )
