@@ -6,12 +6,18 @@ on:
   push:
     branches: [main, feat/cd-build] # feat/cd-build는 머지 전 확인용. 머지 전에 뺀다
   workflow_dispatch:
+    inputs:
+      skip_previous_check:
+        description: "직전 비교 건너뛰기 (PR이나 코멘트가 실제로 많이 지워져서 비교가 계속 실패할 때)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
   actions: read # 직전 실행의 DB 결과물을 내려받는다
 
-# 배포는 한 번에 하나씩. 진행 중인 배포를 끊지 않고 다음 것이 기다린다.
+# 배포는 한 번에 하나씩. 진행 중인 배포는 끊지 않는다. 대기는 하나만 남고, 더 오면 먼저 기다리던 것이
+# 취소된다. 매번 데이터를 전부 새로 받으므로 마지막 실행만 돌아도 결과는 같다.
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -23,6 +29,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }} # pipeline fetch가 쓰는 gh CLI의 토큰. 실제 한도는 시간당 5,000회였다
       TZ: Asia/Seoul # 수집 시각(data_as_of)을 한국 시간으로 남긴다
+    defaults:
+      run:
+        shell: bash # -eo pipefail: 파이프 중간 명령이 실패해도 단계가 실패한다
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
@@ -32,11 +41,17 @@ jobs:
 
       - name: 미션 목록
         id: missions
-        run: echo "ids=$(uv run python -c 'from cholog_mcp.missions import MISSIONS; print(" ".join(MISSIONS))')" >> "$GITHUB_OUTPUT"
+        run: |
+          # 변수에 먼저 담는다. echo 안의 $(...)는 실패해도 단계가 실패하지 않는다.
+          ids=$(uv run python -c 'from cholog_mcp.missions import MISSIONS; print(" ".join(MISSIONS))')
+          if [ -z "$ids" ]; then echo "미션 목록이 비었다"; exit 1; fi
+          echo "ids=$ids" >> "$GITHUB_OUTPUT"
 
       - name: API 호출 한도 (수집 전)
         id: before
-        run: echo "remaining=$(gh api rate_limit --jq .resources.core.remaining)" >> "$GITHUB_OUTPUT"
+        run: |
+          remaining=$(gh api rate_limit --jq .resources.core.remaining)
+          echo "remaining=$remaining" >> "$GITHUB_OUTPUT"
 
       - name: 수집
         run: |
@@ -47,11 +62,14 @@ jobs:
       - name: API 호출 한도 (수집 후)
         id: after
         run: |
-          echo "remaining=$(gh api rate_limit --jq .resources.core.remaining)" >> "$GITHUB_OUTPUT"
-          echo "limit=$(gh api rate_limit --jq .resources.core.limit)" >> "$GITHUB_OUTPUT"
+          remaining=$(gh api rate_limit --jq .resources.core.remaining)
+          limit=$(gh api rate_limit --jq .resources.core.limit)
+          echo "remaining=$remaining" >> "$GITHUB_OUTPUT"
+          echo "limit=$limit" >> "$GITHUB_OUTPUT"
 
       - name: 직전 DB 내려받기
         id: previous
+        if: ${{ !inputs.skip_previous_check }}
         run: |
           # 이 브랜치에서 마지막으로 성공한 실행의 DB. 없거나 보관 기간이 지났으면 비교를 건너뛴다.
           run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch "$GITHUB_REF_NAME" \
@@ -67,7 +85,8 @@ jobs:
           for mission in ${{ steps.missions.outputs.ids }}; do
             uv run python -m pipeline load "$mission"
             uv run python -m pipeline tag "$mission"
-            uv run python -m pipeline check "$mission" --previous previous/cholog.db
+            # 점검 결과를 파일로도 남겨, 점검이 실패해도 요약에서 볼 수 있게 한다.
+            uv run python -m pipeline check "$mission" --previous previous/cholog.db | tee "check-$mission.txt"
           done
 
       - name: 이미지 빌드
@@ -80,20 +99,37 @@ jobs:
           retention-days: 30
 
       - name: 요약
+        if: ${{ always() }} # 점검이 실패했을 때 가장 필요하다
         run: |
           {
             echo "## 빌드 결과"
-            echo
-            echo "| 미션 | PR | 리뷰어 코멘트 | 주제가 붙은 리뷰어 코멘트 |"
-            echo "|---|---|---|---|"
             for mission in ${{ steps.missions.outputs.ids }}; do
-              # check 출력 한 줄: "OK  <항목 이름>  <값>"
-              uv run python -m pipeline check "$mission" | awk -v m="$mission" '
-                {name = $2; for (i = 3; i < NF; i++) name = name " " $i; value[name] = $NF}
-                END {print "| " m " | " value["PR"] " | " value["리뷰어 코멘트"] " | " value["주제가 붙은 리뷰어 코멘트"] " |"}'
+              echo
+              echo "### $mission"
+              if [ -f "check-$mission.txt" ]; then
+                echo '```'
+                cat "check-$mission.txt"
+                echo '```'
+              else
+                echo "점검까지 가지 못했다"
+              fi
             done
             echo
-            echo "- GitHub API 호출: $(( ${{ steps.before.outputs.remaining }} - ${{ steps.after.outputs.remaining }} ))회 (시간당 한도 ${{ steps.after.outputs.limit }}회, 남은 것 ${{ steps.after.outputs.remaining }}회)"
-            echo "- 직전 비교: ${{ steps.previous.outputs.run_id && format('실행 {0}의 DB', steps.previous.outputs.run_id) || '건너뜀 (직전 DB 없음)' }}"
-            echo "- 이미지 크기: $(docker image inspect cholog-mcp:${{ github.sha }} --format '{{.Size}}' | numfmt --to=iec)"
+            before="${{ steps.before.outputs.remaining }}"
+            after="${{ steps.after.outputs.remaining }}"
+            if [ -n "$before" ] && [ -n "$after" ] && [ "$before" -ge "$after" ]; then
+              echo "- GitHub API 호출: $((before - after))회 (시간당 한도 ${{ steps.after.outputs.limit }}회, 남은 것 ${after}회)"
+            else
+              echo "- GitHub API 호출: 셀 수 없음 (수집 전에 멈췄거나, 수집 중에 한도가 초기화됐다)"
+            fi
+            if [ "${{ inputs.skip_previous_check }}" = "true" ]; then
+              echo "- 직전 비교: 건너뜀 (수동 실행에서 선택)"
+            elif [ -n "${{ steps.previous.outputs.run_id }}" ]; then
+              echo "- 직전 비교: 실행 ${{ steps.previous.outputs.run_id }}의 DB"
+            else
+              echo "- 직전 비교: 건너뜀 (직전 DB 없음)"
+            fi
+            if docker image inspect "cholog-mcp:${{ github.sha }}" > /dev/null 2>&1; then
+              echo "- 이미지 크기: $(docker image inspect "cholog-mcp:${{ github.sha }}" --format '{{.Size}}' | numfmt --to=iec)"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

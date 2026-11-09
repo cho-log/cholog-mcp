@@ -6,7 +6,11 @@
 
 import sqlite3
 
+# verify.py와 비슷한 SQL을 일부러 따로 둔다. verify는 분류 품질을 보는 개발 도구라
+# 없어질 수 있고, 배포 점검이 그 변화에 함께 깨지지 않게 하기 위해서다.
 
+# PR은 거의 지워지지 않는다. 이만큼 줄면 수집이 끊긴 것으로 본다.
+PR_DROP_LIMIT = 5
 # 코멘트는 지워질 수 있어서 이만큼 줄어드는 것은 정상으로 본다.
 COMMENT_DROP_TOLERANCE = 0.01
 
@@ -55,7 +59,7 @@ def check_mission(
     previous_prs = _prs(previous, mission_id)
     comments, previous_comments = _comments(conn, mission_id), _comments(previous, mission_id)
     return results + [
-        ("직전 대비 PR", prs >= previous_prs, f"{previous_prs} → {prs}"),
+        ("직전 대비 PR", previous_prs - prs < PR_DROP_LIMIT, f"{previous_prs} → {prs}"),
         (
             "직전 대비 코멘트",
             previous_comments - comments <= previous_comments * COMMENT_DROP_TOLERANCE,

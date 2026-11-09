@@ -10,6 +10,7 @@
 import argparse
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 from cholog_mcp.config import db_path
@@ -40,6 +41,9 @@ def main() -> int:
         print(f"PR {count}개의 코멘트를 {raw_dir}에 받았다")
         return 0
 
+    if args.command == "check":
+        return _check(mission.id, args.previous)
+
     path = db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -53,19 +57,35 @@ def main() -> int:
             print(f"주제 {tag_mission(conn, mission.id)}개를 붙였다")
         elif args.command == "verify":
             return 0 if verify_mission(conn, mission.id) else 1
-        elif args.command == "check":
-            if args.previous is None or not args.previous.exists():
-                if args.previous is not None:
-                    print(f"직전 DB가 없어서({args.previous}) 직전 비교는 건너뛴다")
-                return 0 if print_check(conn, mission.id) else 1
-            previous = sqlite3.connect(f"file:{args.previous}?mode=ro", uri=True)
-            try:
-                return 0 if print_check(conn, mission.id, previous) else 1
-            finally:
-                previous.close()
     finally:
         conn.close()
     return 0
+
+
+def _open_read_only(path: Path) -> sqlite3.Connection:
+    # 경로를 URI로 바꿀 때 #, ? 같은 글자가 섞여도 그대로 열리게 as_uri()를 쓴다.
+    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+
+
+def _check(mission_id: str, previous_path: Path | None) -> int:
+    """점검은 읽기만 한다. DB가 없으면 새로 만들지 않고 실패한다."""
+    path = db_path()
+    if not path.exists():
+        print(f"DB가 없다: {path}. load와 tag를 먼저 돌린다")
+        return 1
+    if previous_path is not None and not previous_path.exists():
+        print(f"직전 DB가 없어서({previous_path}) 직전 비교는 건너뛴다")
+        previous_path = None
+
+    with closing(_open_read_only(path)) as conn:
+        if previous_path is None:
+            return 0 if print_check(conn, mission_id) else 1
+        try:
+            with closing(_open_read_only(previous_path)) as previous:
+                return 0 if print_check(conn, mission_id, previous) else 1
+        except sqlite3.DatabaseError as error:
+            print(f"직전 DB를 읽을 수 없다({previous_path}): {error}")
+            return 1
 
 
 if __name__ == "__main__":

@@ -111,13 +111,26 @@ def test_직전보다_늘면_통과한다(conn):
     assert failed_against(conn, previous) == []
 
 
-def test_직전보다_PR이_줄면_실패한다(conn):
-    conn.execute(
-        "INSERT INTO pull_requests VALUES (?, 2, 'other', '미션 제출', '2026-03-02', 'https://github.com/owner/repo/pull/2')",
-        (MISSION,),
-    )
+def add_prs(conn, count: int) -> None:
+    for number in range(2, 2 + count):
+        conn.execute(
+            "INSERT INTO pull_requests VALUES (?, ?, 'other', '미션 제출', '2026-03-02', ?)",
+            (MISSION, number, f"https://github.com/owner/repo/pull/{number}"),
+        )
+
+
+def test_PR이_4개까지_줄면_통과한다(conn):
+    add_prs(conn, 9)  # 모두 10개
     previous = copy_of(conn)
-    conn.execute("DELETE FROM pull_requests WHERE number = 2")
+    conn.execute("DELETE FROM pull_requests WHERE number BETWEEN 2 AND 5")  # 10 → 6
+
+    assert failed_against(conn, previous) == []
+
+
+def test_PR이_5개_이상_줄면_실패한다(conn):
+    add_prs(conn, 9)
+    previous = copy_of(conn)
+    conn.execute("DELETE FROM pull_requests WHERE number BETWEEN 2 AND 6")  # 10 → 5
 
     assert failed_against(conn, previous) == ["직전 대비 PR"]
 
@@ -143,3 +156,29 @@ def test_직전_DB에_없던_미션은_통과한다(conn):
     create_schema(previous)
 
     assert failed_against(conn, previous) == []
+
+
+def test_check는_DB_파일이_없으면_만들지_않고_실패한다(tmp_path, monkeypatch):
+    missing = tmp_path / "missing.db"
+    monkeypatch.setenv("CHOLOG_DB_PATH", str(missing))
+    monkeypatch.setattr("sys.argv", ["pipeline", "check", "java-racingcar"])
+
+    from pipeline.__main__ import main
+
+    assert main() == 1
+    assert not missing.exists()
+
+
+def test_직전_DB가_SQLite가_아니면_이유를_알리고_실패한다(conn, tmp_path, monkeypatch, capsys):
+    db = tmp_path / "cholog.db"
+    conn.commit()
+    conn.backup(sqlite3.connect(db))
+    not_sqlite = tmp_path / "previous #1.db"  # 경로에 #가 있어도 열려야 한다
+    not_sqlite.write_text("not a database")
+    monkeypatch.setenv("CHOLOG_DB_PATH", str(db))
+    monkeypatch.setattr("sys.argv", ["pipeline", "check", "java-racingcar", "--previous", str(not_sqlite)])
+
+    from pipeline.__main__ import main
+
+    assert main() == 1
+    assert "직전 DB를 읽을 수 없다" in capsys.readouterr().out
