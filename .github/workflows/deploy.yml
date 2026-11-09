@@ -1,0 +1,84 @@
+# 배포. 지금은 build 작업만 있다: 데이터 수집 → DB → 점검 → 이미지 빌드.
+# AWS에 올리는 deploy 작업은 이 뒤에 붙인다.
+name: 배포
+
+on:
+  push:
+    branches: [main, feat/cd-build] # feat/cd-build는 머지 전 확인용. 머지 전에 뺀다
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 배포는 한 번에 하나씩. 진행 중인 배포를 끊지 않고 다음 것이 기다린다.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm # Lambda와 같은 arm64에서 빌드한다
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }} # pipeline fetch가 쓰는 gh CLI의 토큰. 저장소당 시간당 1,000회
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+
+      - name: 미션 목록
+        id: missions
+        run: echo "ids=$(uv run python -c 'from cholog_mcp.missions import MISSIONS; print(" ".join(MISSIONS))')" >> "$GITHUB_OUTPUT"
+
+      - name: API 호출 한도 (수집 전)
+        id: before
+        run: echo "remaining=$(gh api rate_limit --jq .resources.core.remaining)" >> "$GITHUB_OUTPUT"
+
+      - name: 수집
+        run: |
+          for mission in ${{ steps.missions.outputs.ids }}; do
+            uv run python -m pipeline fetch "$mission"
+          done
+
+      - name: API 호출 한도 (수집 후)
+        id: after
+        run: |
+          echo "remaining=$(gh api rate_limit --jq .resources.core.remaining)" >> "$GITHUB_OUTPUT"
+          echo "limit=$(gh api rate_limit --jq .resources.core.limit)" >> "$GITHUB_OUTPUT"
+
+      - name: 적재, 분류, 점검
+        run: |
+          for mission in ${{ steps.missions.outputs.ids }}; do
+            uv run python -m pipeline load "$mission"
+            uv run python -m pipeline tag "$mission"
+            uv run python -m pipeline check "$mission"
+          done
+
+      - name: 이미지 빌드
+        run: docker build -t cholog-mcp:${{ github.sha }} .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cholog-db
+          path: data/cholog.db
+          retention-days: 30
+
+      - name: 요약
+        run: |
+          {
+            echo "## 빌드 결과"
+            echo
+            echo "| 미션 | PR | 리뷰어 코멘트 | 주제가 붙은 리뷰어 코멘트 |"
+            echo "|---|---|---|---|"
+            for mission in ${{ steps.missions.outputs.ids }}; do
+              # check 출력 한 줄: "OK  <항목 이름>  <값>"
+              uv run python -m pipeline check "$mission" | awk -v m="$mission" '
+                {name = $2; for (i = 3; i < NF; i++) name = name " " $i; value[name] = $NF}
+                END {print "| " m " | " value["PR"] " | " value["리뷰어 코멘트"] " | " value["주제가 붙은 리뷰어 코멘트"] " |"}'
+            done
+            echo
+            echo "- GitHub API 호출: $(( ${{ steps.before.outputs.remaining }} - ${{ steps.after.outputs.remaining }} ))회 (시간당 한도 ${{ steps.after.outputs.limit }}회, 남은 것 ${{ steps.after.outputs.remaining }}회)"
+            echo "- 이미지 크기: $(docker image inspect cholog-mcp:${{ github.sha }} --format '{{.Size}}' | numfmt --to=iec)"
+          } >> "$GITHUB_STEP_SUMMARY"
