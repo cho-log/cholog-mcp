@@ -4,7 +4,7 @@ name: 배포
 
 on:
   push:
-    branches: [main, feat/cd-build] # feat/cd-build는 머지 전 확인용. 머지 전에 뺀다
+    branches: [main]
   workflow_dispatch:
     inputs:
       skip_previous_check:
