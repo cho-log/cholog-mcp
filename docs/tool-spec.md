@@ -145,7 +145,7 @@ Spring으로 비유하면 이렇다.
           "reviewer": "reviewer-id",
           "path": "src/main/java/Car.java",
           "excerpt": "리뷰 본문 앞부분 (최대 300자)",
-          "url": "https://github.com/next-step/java-racingcar-simple-playground/pull/190#discussion_r0000000000"
+          "url": "https://github.com/cho-log/java-racingcar-simple-playground/pull/190#discussion_r0000000000"
         }
       ]
     }
