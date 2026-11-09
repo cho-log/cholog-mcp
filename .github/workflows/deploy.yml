@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # 직전 실행의 DB 결과물을 내려받는다
 
 # 배포는 한 번에 하나씩. 진행 중인 배포를 끊지 않고 다음 것이 기다린다.
 concurrency:
@@ -20,7 +21,8 @@ jobs:
     runs-on: ubuntu-24.04-arm # Lambda와 같은 arm64에서 빌드한다
     timeout-minutes: 30
     env:
-      GH_TOKEN: ${{ github.token }} # pipeline fetch가 쓰는 gh CLI의 토큰. 저장소당 시간당 1,000회
+      GH_TOKEN: ${{ github.token }} # pipeline fetch가 쓰는 gh CLI의 토큰. 실제 한도는 시간당 5,000회였다
+      TZ: Asia/Seoul # 수집 시각(data_as_of)을 한국 시간으로 남긴다
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
@@ -48,12 +50,24 @@ jobs:
           echo "remaining=$(gh api rate_limit --jq .resources.core.remaining)" >> "$GITHUB_OUTPUT"
           echo "limit=$(gh api rate_limit --jq .resources.core.limit)" >> "$GITHUB_OUTPUT"
 
+      - name: 직전 DB 내려받기
+        id: previous
+        run: |
+          # 이 브랜치에서 마지막으로 성공한 실행의 DB. 없거나 보관 기간이 지났으면 비교를 건너뛴다.
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow deploy.yml --branch "$GITHUB_REF_NAME" \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ] && gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n cholog-db -D previous; then
+            echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          else
+            echo "직전 DB가 없어서 직전 비교는 건너뛴다"
+          fi
+
       - name: 적재, 분류, 점검
         run: |
           for mission in ${{ steps.missions.outputs.ids }}; do
             uv run python -m pipeline load "$mission"
             uv run python -m pipeline tag "$mission"
-            uv run python -m pipeline check "$mission"
+            uv run python -m pipeline check "$mission" --previous previous/cholog.db
           done
 
       - name: 이미지 빌드
@@ -80,5 +94,6 @@ jobs:
             done
             echo
             echo "- GitHub API 호출: $(( ${{ steps.before.outputs.remaining }} - ${{ steps.after.outputs.remaining }} ))회 (시간당 한도 ${{ steps.after.outputs.limit }}회, 남은 것 ${{ steps.after.outputs.remaining }}회)"
+            echo "- 직전 비교: ${{ steps.previous.outputs.run_id && format('실행 {0}의 DB', steps.previous.outputs.run_id) || '건너뜀 (직전 DB 없음)' }}"
             echo "- 이미지 크기: $(docker image inspect cholog-mcp:${{ github.sha }} --format '{{.Size}}' | numfmt --to=iec)"
           } >> "$GITHUB_STEP_SUMMARY"

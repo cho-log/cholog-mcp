@@ -74,3 +74,72 @@ def test_tag를_돌리지_않았으면_실패한다(conn):
     conn.execute("DELETE FROM comment_topics")
 
     assert failed(conn) == ["주제가 붙은 리뷰어 코멘트"]
+
+
+def copy_of(conn) -> sqlite3.Connection:
+    """직전 DB로 쓸 복사본. 열린 트랜잭션이 있으면 복사가 잠금에서 기다리므로 먼저 커밋한다."""
+    conn.commit()
+    previous = sqlite3.connect(":memory:")
+    conn.backup(previous)
+    return previous
+
+
+def add_comments(conn, count: int) -> None:
+    for comment_id in range(100, 100 + count):
+        conn.execute(
+            "INSERT INTO comments VALUES (?, ?, 1, 'issue', 'reviewer', 0, '좋아요', NULL, NULL, '2026-03-01', '2026-03-01', ?)",
+            (comment_id, MISSION, f"https://github.com/owner/repo/pull/1#issuecomment-{comment_id}"),
+        )
+
+
+def failed_against(conn, previous) -> list[str]:
+    return [name for name, ok, _ in check_mission(conn, MISSION, previous) if not ok]
+
+
+def test_직전과_같으면_통과한다(conn):
+    assert failed_against(conn, copy_of(conn)) == []
+
+
+def test_직전보다_늘면_통과한다(conn):
+    previous = copy_of(conn)
+    conn.execute(
+        "INSERT INTO pull_requests VALUES (?, 2, 'other', '미션 제출', '2026-03-02', 'https://github.com/owner/repo/pull/2')",
+        (MISSION,),
+    )
+    add_comments(conn, 3)
+
+    assert failed_against(conn, previous) == []
+
+
+def test_직전보다_PR이_줄면_실패한다(conn):
+    conn.execute(
+        "INSERT INTO pull_requests VALUES (?, 2, 'other', '미션 제출', '2026-03-02', 'https://github.com/owner/repo/pull/2')",
+        (MISSION,),
+    )
+    previous = copy_of(conn)
+    conn.execute("DELETE FROM pull_requests WHERE number = 2")
+
+    assert failed_against(conn, previous) == ["직전 대비 PR"]
+
+
+def test_코멘트가_1퍼센트_이하로_줄면_통과한다(conn):
+    add_comments(conn, 198)  # 모두 200개
+    previous = copy_of(conn)
+    conn.execute("DELETE FROM comments WHERE id IN (100, 101)")  # 200 → 198, 1%
+
+    assert failed_against(conn, previous) == []
+
+
+def test_코멘트가_1퍼센트_넘게_줄면_실패한다(conn):
+    add_comments(conn, 198)
+    previous = copy_of(conn)
+    conn.execute("DELETE FROM comments WHERE id IN (100, 101, 102)")  # 200 → 197, 1.5%
+
+    assert failed_against(conn, previous) == ["직전 대비 코멘트"]
+
+
+def test_직전_DB에_없던_미션은_통과한다(conn):
+    previous = sqlite3.connect(":memory:")
+    create_schema(previous)
+
+    assert failed_against(conn, previous) == []

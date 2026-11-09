@@ -29,6 +29,7 @@ def main() -> int:
     parser.add_argument("command", choices=("fetch", "load", "tag", "verify", "check"))
     parser.add_argument("mission", choices=sorted(MISSIONS))
     parser.add_argument("--only", type=int, nargs="+", metavar="PR", help="fetch: 이 PR의 코멘트만 받는다")
+    parser.add_argument("--previous", type=Path, metavar="DB", help="check: 직전 DB와도 비교한다. 파일이 없으면 건너뛴다")
     args = parser.parse_args()
 
     mission = MISSIONS[args.mission]
@@ -53,7 +54,15 @@ def main() -> int:
         elif args.command == "verify":
             return 0 if verify_mission(conn, mission.id) else 1
         elif args.command == "check":
-            return 0 if print_check(conn, mission.id) else 1
+            if args.previous is None or not args.previous.exists():
+                if args.previous is not None:
+                    print(f"직전 DB가 없어서({args.previous}) 직전 비교는 건너뛴다")
+                return 0 if print_check(conn, mission.id) else 1
+            previous = sqlite3.connect(f"file:{args.previous}?mode=ro", uri=True)
+            try:
+                return 0 if print_check(conn, mission.id, previous) else 1
+            finally:
+                previous.close()
     finally:
         conn.close()
     return 0
