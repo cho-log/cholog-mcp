@@ -4,6 +4,7 @@
     uv run python -m pipeline load java-racingcar     원본을 SQLite에 넣는다
     uv run python -m pipeline tag java-racingcar      리뷰에 주제를 붙인다
     uv run python -m pipeline verify java-racingcar   기준값과 비교한다
+    uv run python -m pipeline check java-racingcar    기본 점검을 한다 (배포 전)
 """
 
 import argparse
@@ -12,6 +13,7 @@ import sys
 from pathlib import Path
 
 from cholog_mcp.config import db_path
+from pipeline.check import print_check
 from pipeline.fetch import fetch_mission
 from pipeline.load import load_mission
 from cholog_mcp.missions import MISSIONS
@@ -24,7 +26,7 @@ RAW_ROOT = Path("data/raw")
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="pipeline", description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("fetch", "load", "tag", "verify"))
+    parser.add_argument("command", choices=("fetch", "load", "tag", "verify", "check"))
     parser.add_argument("mission", choices=sorted(MISSIONS))
     parser.add_argument("--only", type=int, nargs="+", metavar="PR", help="fetch: 이 PR의 코멘트만 받는다")
     args = parser.parse_args()
@@ -50,6 +52,8 @@ def main() -> int:
             print(f"주제 {tag_mission(conn, mission.id)}개를 붙였다")
         elif args.command == "verify":
             return 0 if verify_mission(conn, mission.id) else 1
+        elif args.command == "check":
+            return 0 if print_check(conn, mission.id) else 1
     finally:
         conn.close()
     return 0
