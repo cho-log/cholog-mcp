@@ -72,6 +72,15 @@ CONCEPTS = (
             ("커밋", "commit", "pr 단위")),
     Concept("readability", "가독성",
             ("가독성", "읽기", "읽히지 않", "명확")),
+    Concept("formatting", "코드 포맷팅 / 컨벤션", ()),
+    Concept("equals-hashcode", "equals·hashCode·record", ()),
+    Concept("enum", "enum 활용", ()),
+    Concept("unused-code", "미사용 코드 제거", ()),
+    Concept("law-of-demeter", "디미터 법칙", ()),
+    Concept("member-order", "메서드 배치 순서", ()),
+    Concept("comparable", "Comparable 구현", ()),
+    Concept("state-consistency", "상태 일관성", ()),
+    Concept("this-usage", "this 사용 규칙", ()),
 )
 
 # 자동차 경주: 난수 처리에 관한 리뷰만 세부 지적의 대상으로 본다.
