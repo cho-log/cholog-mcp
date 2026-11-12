@@ -61,4 +61,4 @@ def test_미션의_데이터가_없으면_이유를_알려준다(db_file):
 
 def test_지원하지_않는_미션은_받지_않는다(db_file):
     with pytest.raises(ToolError, match="java-racingcar"):
-        call({"mission": "java-lotto"})
+        call({"mission": "java-calculator"})
