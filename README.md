@@ -4,7 +4,10 @@
 
 ## 상태
 
-토대 개발 중 (미션 1개 + 도구 1개).
+토대 개발 중 (미션 1개 + 도구 2개).
+
+- `get_repeated_feedback`: 반복 지적 주제의 집계와 대표 리뷰.
+- `get_review_context`: 선택한 스터디원의 리뷰·작성자 답글 원문과 실제 답글 관계. 에이전트가 근거를 읽고 함께 이야기할 주제를 제안한다.
 
 ## 구조
 
@@ -41,6 +44,8 @@ uv run python -m pipeline check java-racingcar    # 기본 점검 (배포 전에
 
 SQLite 파일의 위치는 환경 변수 `CHOLOG_DB_PATH`로 바꿀 수 있다. 각 명령이 하는 일은 [docs/tool-spec.md](docs/tool-spec.md)의 5번 파이프라인에 있다.
 
+HTTP 배포는 수집 → 최신 스키마로 새 DB 생성 → 분류 → 검증 후 코드와 DB를 같은 이미지로 배포한다. 기존 DB와 분류 연결은 새 DB 생성의 입력으로 사용하지 않는다. 구 스키마를 사용하는 로컬 환경도 별도 새 경로를 `CHOLOG_DB_PATH`로 지정해 `load` → `tag` → `check`를 실행한다. 오래된 원본에 부모 정보가 없거나 수집 완전성을 확인할 수 없으면 `fetch`부터 다시 실행한다. [새 DB 생성과 배포 방식](docs/tool-spec.md#새-db-생성과-http-배포)을 따른다. 서버는 DB를 읽기만 하며 시작할 때 자동으로 수집·적재하거나 스키마를 바꾸지 않는다.
+
 ## 서버 실행
 
 데이터를 준비한 뒤, 서버가 뜨고 도구가 불리는지 확인한다.
@@ -75,7 +80,7 @@ claude mcp add --transport http cholog http://127.0.0.1:8080/mcp
 
 ### 컨테이너로 실행
 
-배포(Lambda)에 쓰는 이미지다. 데이터(`data/cholog.db`)를 이미지에 넣으므로, 데이터를 먼저 준비해야 빌드된다.
+배포(Lambda)에 쓰는 이미지다. 배포할 코드의 최신 스키마로 새로 생성하고 분류·검증한 데이터(`data/cholog.db`)를 같은 이미지에 넣는다. 직전 DB는 별도 경로에서 비교 검증에만 사용한다. 현재 배포 워크플로는 이미지 빌드까지 수행하며 실제 AWS 자동 배포 연결은 후속 작업이다.
 
 ```bash
 docker build --platform linux/arm64 -t cholog-mcp:local .

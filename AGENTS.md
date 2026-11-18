@@ -35,6 +35,7 @@
 | 파일 | 역할 |
 |---|---|
 | `src/cholog_mcp/feedback.py` | 도구 로직. DB 연결을 받아 결과를 만든다. MCP를 모른다 |
+| `src/cholog_mcp/review_context.py` | 리뷰 대화 조회·부모 관계·페이지 분할. 분류와 MCP를 모른다 |
 | `src/cholog_mcp/server.py` | 도구를 MCP 서버에 등록한다. 입력 스키마와 도구 설명을 정한다 |
 | `src/cholog_mcp/__init__.py` | 서버를 띄운다. `main`은 stdio, `main_http`는 HTTP |
 | `src/cholog_mcp/config.py` | 실행 환경에서 받는 설정 (DB 경로, HTTP 주소와 허용 Host) |
@@ -42,7 +43,7 @@
 | `pipeline/topics.py` | 키워드 분류에 쓰는 주제 사전 |
 | `pipeline/tagger.py` | 리뷰에 주제를 붙여 `comment_topics`에 쓴다 |
 
-도구는 `comment_topics` 테이블만 읽는다. 분류 방법을 바꿀 때 도구 코드를 고치지 않는다.
+`get_repeated_feedback`은 `comment_topics`를 기준으로 집계한다. 분류 방법을 바꿀 때 도구 코드를 고치지 않는다. `get_review_context`는 분류와 무관하게 PR·댓글 원문을 직접 읽어 태그 없는 대화도 제공한다.
 
 ## 문서
 
@@ -54,7 +55,7 @@
 
 ## 설계 원칙
 
-배포 방식(로컬 stdio, 웹 HTTP)이 아직 정해지지 않았다. 실행 방식만 바꾸면 되도록 아래를 지킨다.
+HTTP 배포는 수집 → 최신 스키마의 새 DB 생성 → 분류 → 검증 후 코드와 DB를 같은 이미지로 배포한다. 로컬 stdio와 HTTP가 같은 도구 로직을 쓰도록 아래를 지킨다.
 
 - 도구 로직을 실행 방식과 분리한다. 도구 함수는 stdio인지 HTTP인지 몰라야 한다.
 - 데이터는 파일 하나에 두고, 경로는 설정으로 받는다. 코드에 경로를 박아 넣지 않는다.

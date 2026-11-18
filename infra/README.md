@@ -38,6 +38,10 @@ terraform init
 
 Lambda는 만들 때 ECR에 이미지가 있어야 하고, 서버가 받을 Host(Function URL 도메인)는 URL을 만든 뒤에야 정해진다. 그래서 처음 한 번은 나눠서 apply한다.
 
+이미지는 매번 수집 → 최신 스키마의 새 DB 생성 → 분류 → 검증을 마친 뒤 빌드한다. 지원 미션을 모두 적재한 새 `data/cholog.db`와 코드를 같은 이미지에 넣는다. 기존 DB의 스키마나 분류 연결을 새 DB로 옮기지 않으며, 직전 DB는 별도 경로에서 `check --previous`의 읽기 전용 비교에만 사용한다. [데이터 준비 방식](../docs/tool-spec.md#새-db-생성과-http-배포)을 따른다. 서버 시작 시에는 스키마 변경·수집·적재를 수행하지 않는다.
+
+현재 `.github/workflows/deploy.yml`은 이 순서로 이미지 빌드까지만 수행한다. 아래 수동 배포 절차를 자동화하는 AWS 연결은 후속 작업이다.
+
 ```bash
 # 1. ECR만 만든다
 terraform apply -target=aws_ecr_repository.server -target=aws_ecr_lifecycle_policy.server
@@ -62,6 +66,8 @@ terraform apply
 메일로 SNS "Subscription Confirmation"이 온다. 링크를 눌러야 차단 알림을 받는다.
 
 ## 새 이미지 배포
+
+배포할 코드 기준으로 위 데이터 준비를 다시 수행해 새 DB를 검증한 후 이미지를 빌드한다. 직전 배포의 DB 파일을 새 이미지의 입력으로 재사용하지 않는다.
 
 ```bash
 docker build --platform linux/arm64 -t $REPO:$TAG . && docker push $REPO:$TAG
