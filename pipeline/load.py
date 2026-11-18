@@ -64,15 +64,18 @@ def load_mission(conn: sqlite3.Connection, mission: Mission, raw_dir: Path) -> d
                     number,
                     kind,
                     author,
-                    int(author is not None and author == pr_author),
+                    int(author is not None and pr_author is not None and author.lower() == pr_author.lower()),
                     comment.get("body") or "",
                     comment.get("path"),
                     comment.get("diff_hunk"),
                     comment["created_at"],
                     comment["updated_at"],
                     comment["html_url"],
+                    comment.get("in_reply_to_id") if kind == "review" else None,
                 ))
 
+    # 기존 집계 도구가 score 동률에서 c.id로 정렬한다. 원본 ID 순서를 보존한다.
+    comment_rows.sort(key=lambda row: (row[0], row[3]))
     with conn:
         conn.execute(
             "DELETE FROM comment_topics WHERE comment_id IN (SELECT id FROM comments WHERE mission_id = ?)",
@@ -88,9 +91,12 @@ def load_mission(conn: sqlite3.Connection, mission: Mission, raw_dir: Path) -> d
         )
         conn.executemany("INSERT INTO pull_requests VALUES (?, ?, ?, ?, ?, ?)", pr_rows)
         try:
-            conn.executemany("INSERT INTO comments VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", comment_rows)
+            conn.executemany(
+                "INSERT INTO comments (github_id, mission_id, pr_number, kind, author, is_pr_author, "
+                "body, path, diff_hunk, created_at, updated_at, url, in_reply_to_id) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", comment_rows,
+            )
         except sqlite3.IntegrityError as error:
-            # 리뷰 코멘트와 대화 코멘트는 GitHub에서 ID 체계가 다르다. 겹치면 여기서 드러난다.
-            raise ValueError(f"코멘트 ID가 겹친다: {error}") from error
+            raise ValueError(f"코멘트 식별자 중복 또는 필수값 오류: {error}") from error
 
     return {"pull_requests": len(pr_rows), "comments": len(comment_rows)}

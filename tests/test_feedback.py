@@ -44,8 +44,10 @@ class Db:
             "SELECT author FROM pull_requests WHERE mission_id = ? AND number = ?", (MISSION, pr)
         ).fetchone()[0]
         self.conn.execute(
-            "INSERT INTO comments VALUES (?, ?, ?, 'review', ?, ?, ?, 'Car.java', NULL, '2026-03-02', '2026-03-02', ?)",
-            (comment_id, MISSION, pr, author, int(author == pr_author), body,
+            "INSERT INTO comments (id, github_id, mission_id, pr_number, kind, author, is_pr_author, "
+            "body, path, diff_hunk, created_at, updated_at, url) "
+            "VALUES (?, ?, ?, ?, 'review', ?, ?, ?, 'Car.java', NULL, '2026-03-02', '2026-03-02', ?)",
+            (comment_id, comment_id, MISSION, pr, author, int(author == pr_author), body,
              f"https://github.com/owner/repo/pull/{pr}#discussion_r{comment_id}"),
         )
         self.conn.executemany(
