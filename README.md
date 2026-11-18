@@ -32,6 +32,8 @@ uv run pytest
 
 ## 데이터 준비
 
+아래는 로컬 개발자와 배포 파이프라인의 데이터 준비 절차다. 배포된 HTTP 서비스 사용자는 DB를 생성하거나 경로를 교체하지 않고 MCP 서버에 연결해 도구를 사용한다.
+
 데이터는 저장소에 없다. 미션마다 아래 순서로 만든다. `fetch`는 [GitHub CLI](https://cli.github.com/)로 로그인(`gh auth login`)한 상태여야 한다.
 
 ```bash
@@ -44,11 +46,15 @@ uv run python -m pipeline check java-racingcar    # 기본 점검 (배포 전에
 
 SQLite 파일의 위치는 환경 변수 `CHOLOG_DB_PATH`로 바꿀 수 있다. 각 명령이 하는 일은 [docs/tool-spec.md](docs/tool-spec.md)의 5번 파이프라인에 있다.
 
-HTTP 배포는 수집 → 최신 스키마로 새 DB 생성 → 분류 → 검증 후 코드와 DB를 같은 이미지로 배포한다. 기존 DB와 분류 연결은 새 DB 생성의 입력으로 사용하지 않는다. 구 스키마를 사용하는 로컬 환경도 별도 새 경로를 `CHOLOG_DB_PATH`로 지정해 `load` → `tag` → `check`를 실행한다. 오래된 원본에 부모 정보가 없거나 수집 완전성을 확인할 수 없으면 `fetch`부터 다시 실행한다. [새 DB 생성과 배포 방식](docs/tool-spec.md#새-db-생성과-http-배포)을 따른다. 서버는 DB를 읽기만 하며 시작할 때 자동으로 수집·적재하거나 스키마를 바꾸지 않는다.
+HTTP 배포는 수집 → 최신 스키마로 새 DB 생성·적재 → 분류 → 검증 후 코드와 DB를 같은 이미지에 포함한다. 직전 DB는 비교 검증에만 쓰고 새 DB의 입력으로 재사용하지 않는다. 원본과 분류 방식으로 배포마다 DB를 재생성하는 구조이므로 기존 DB 스키마를 변환하는 migrate는 지원하지 않는다. [결정과 재검토 조건](docs/decisions.md)을 따른다.
+
+구 스키마를 사용하는 로컬 개발자는 별도 새 경로를 `CHOLOG_DB_PATH`로 지정해 `load` → `tag` → `check`를 실행한 뒤 서버의 DB 경로를 교체한다. 보관한 원본 JSON에 답글 부모 정보가 있으면 재적재로 보완하고, 원본에도 정보가 없거나 수집 완전성을 확인할 수 없으면 `fetch`부터 다시 실행한다. [새 DB 생성과 배포 방식](docs/tool-spec.md#새-db-생성과-http-배포)을 따른다. 서버는 DB를 읽기만 하며 시작할 때 자동으로 수집·적재하거나 스키마를 바꾸지 않는다.
 
 ## 서버 실행
 
 데이터를 준비한 뒤, 서버가 뜨고 도구가 불리는지 확인한다.
+
+실제 수집 원본 없이 임시 합성 DB로 두 도구를 호출하는 최소 확인 절차와 검증 범위는 [최종 검증 기록](docs/records/2026-11-18-review-context-validation.md)에 있다.
 
 ```bash
 uv run python scripts/smoke.py                # 미션 전체
