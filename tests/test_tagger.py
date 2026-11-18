@@ -50,9 +50,11 @@ def _db_with_comments(comments: list[tuple[int, int, str]]) -> sqlite3.Connectio
     create_schema(conn)
     conn.execute("INSERT INTO missions VALUES (?, 'owner/repo', '미션', '2026-01-01T00:00:00+09:00')", (MISSION,))
     conn.executemany(
-        "INSERT INTO comments VALUES (?, ?, 1, 'review', 'someone', ?, ?, NULL, NULL, '2026-01-01', '2026-01-01', "
+        "INSERT INTO comments (id, github_id, mission_id, pr_number, kind, author, is_pr_author, "
+        "body, path, diff_hunk, created_at, updated_at, url) "
+        "VALUES (?, ?, ?, 1, 'review', 'someone', ?, ?, NULL, NULL, '2026-01-01', '2026-01-01', "
         "'https://github.com/owner/repo/pull/1#discussion_r1')",
-        [(comment_id, MISSION, is_pr_author, body) for comment_id, is_pr_author, body in comments],
+        [(comment_id, comment_id, MISSION, is_pr_author, body) for comment_id, is_pr_author, body in comments],
     )
     return conn
 

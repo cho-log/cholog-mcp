@@ -38,8 +38,8 @@ def test_연결_절차_없이_바로_도구_목록을_받는다():
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
-    (tool,) = response.json()["result"]["tools"]
-    assert tool["name"] == "get_repeated_feedback"
+    tools = {t["name"]: t for t in response.json()["result"]["tools"]}
+    assert {"get_repeated_feedback", "get_review_context"} <= tools.keys()
 
 
 def test_도구를_부르면_결과를_JSON_한_덩어리로_돌려준다(db_file):
@@ -94,3 +94,50 @@ def test_POST가_아닌_요청은_스트림을_열지_않고_거절한다():
 
     assert response.status_code == 405
     assert response.headers["allow"] == "POST"
+
+
+def test_HTTP로_리뷰_문맥을_호출한다(context_db_file):
+    import json
+
+    arguments = {"mission": "java-racingcar", "authors": ["learner-01"]}
+    with client() as c:
+        response = c.post("/mcp", headers=HEADERS, json=rpc("tools/call", {"name": "get_review_context", "arguments": arguments}))
+    result = response.json()["result"]
+    assert response.status_code == 200 and not result.get("isError")
+    data = json.loads(result["content"][0]["text"])
+    assert data["scope"]["pr_numbers"] == [1, 3]
+    assert "왜 이 선택이 나을까요?" in result["content"][0]["text"]
+
+
+def test_HTTP_입력_오류는_MCP_도구_오류다(db_file):
+    with client() as c:
+        response = c.post("/mcp", headers=HEADERS, json=rpc("tools/call", {"name": "get_review_context", "arguments": {"mission": "java-racingcar"}}))
+    assert response.status_code == 200
+    assert response.json()["result"]["isError"] is True
+
+
+def test_HTTP_이어_읽기에서_댓글이_누락되거나_중복되지_않는다(context_db_file):
+    import json
+
+    with sqlite3.connect(context_db_file) as conn:
+        conn.executemany(
+            "INSERT INTO comments (github_id,mission_id,pr_number,kind,is_pr_author,body,created_at,updated_at,url,in_reply_to_id) "
+            "VALUES (?,'java-racingcar',1,'review',0,'이어 읽기','2026-03-02','2026-03-02',?,10)",
+            [(1000 + n, f"https://example.com/comment/{1000 + n}") for n in range(51)],
+        )
+    seen, cursor, pages = [], None, 0
+    with client() as c:
+        while True:
+            args = {"mission": "java-racingcar", "authors": ["learner-01"], "cursor": cursor}
+            response = c.post("/mcp", headers=HEADERS, json=rpc("tools/call", {"name": "get_review_context", "arguments": args}))
+            result = response.json()["result"]
+            assert not result.get("isError")
+            data = json.loads(result["content"][0]["text"])
+            seen.extend((pr["number"], c["kind"], c["id"]) for pr in data["pull_requests"] for t in pr["conversations"] for c in t["comments"])
+            pages += 1
+            assert pages < 10
+            if not data["pagination"]["has_more"]:
+                break
+            cursor = data["pagination"]["next_cursor"]
+    assert pages > 1
+    assert len(seen) == len(set(seen)) == 59

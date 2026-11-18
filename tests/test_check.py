@@ -1,9 +1,13 @@
-"""기본 점검 (docs/tool-spec.md의 check)."""
+"""데이터 기본 점검과 파이프라인 CLI."""
 
+import hashlib
+import json
+import shutil
 import sqlite3
 
 import pytest
 
+from pipeline import __main__ as cli
 from pipeline.check import check_mission
 from pipeline.schema import create_schema
 
@@ -22,8 +26,10 @@ def conn():
     )
     for comment_id, author, is_pr_author in ((10, "reviewer", 0), (11, "learner", 1)):
         conn.execute(
-            "INSERT INTO comments VALUES (?, ?, 1, 'review', ?, ?, '책임을 나눠 보세요', NULL, NULL, '2026-03-01', '2026-03-01', ?)",
-            (comment_id, MISSION, author, is_pr_author, f"https://github.com/owner/repo/pull/1#discussion_r{comment_id}"),
+            "INSERT INTO comments (id, github_id, mission_id, pr_number, kind, author, is_pr_author, "
+            "body, path, diff_hunk, created_at, updated_at, url) "
+            "VALUES (?, ?, ?, 1, 'review', ?, ?, '책임을 나눠 보세요', NULL, NULL, '2026-03-01', '2026-03-01', ?)",
+            (comment_id, comment_id, MISSION, author, is_pr_author, f"https://github.com/owner/repo/pull/1#discussion_r{comment_id}"),
         )
     conn.execute("INSERT INTO topics VALUES ('responsibility', NULL, NULL, '책임 분리')")
     conn.execute("INSERT INTO comment_topics VALUES (10, 'responsibility', 'keyword', 1)")
@@ -87,8 +93,10 @@ def copy_of(conn) -> sqlite3.Connection:
 def add_comments(conn, count: int) -> None:
     for comment_id in range(100, 100 + count):
         conn.execute(
-            "INSERT INTO comments VALUES (?, ?, 1, 'issue', 'reviewer', 0, '좋아요', NULL, NULL, '2026-03-01', '2026-03-01', ?)",
-            (comment_id, MISSION, f"https://github.com/owner/repo/pull/1#issuecomment-{comment_id}"),
+            "INSERT INTO comments (id, github_id, mission_id, pr_number, kind, author, is_pr_author, "
+            "body, path, diff_hunk, created_at, updated_at, url) "
+            "VALUES (?, ?, ?, 1, 'issue', 'reviewer', 0, '좋아요', NULL, NULL, '2026-03-01', '2026-03-01', ?)",
+            (comment_id, comment_id, MISSION, f"https://github.com/owner/repo/pull/1#issuecomment-{comment_id}"),
         )
 
 
@@ -182,3 +190,59 @@ def test_직전_DB가_SQLite가_아니면_이유를_알리고_실패한다(conn,
 
     assert main() == 1
     assert "직전 DB를 읽을 수 없다" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["fetch", "load", "tag", "verify", "check"])
+def test_모든_명령의_mission은_필수_인자다(command, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CHOLOG_DB_PATH", str(tmp_path / "unused.db"))
+    monkeypatch.setattr("sys.argv", ["pipeline", command])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 2
+    message = capsys.readouterr().err
+    assert "required" in message and "mission" in message
+    assert not (tmp_path / "unused.db").exists()
+
+
+def test_도움말은_지원하는_명령과_미션을_보여준다(monkeypatch, capsys):
+    monkeypatch.setattr("sys.argv", ["pipeline", "--help"])
+    with pytest.raises(SystemExit) as error:
+        cli.main()
+    assert error.value.code == 0
+    assert "{fetch,load,tag,verify,check}" in capsys.readouterr().out
+
+
+def test_새_DB_생성_분류_검증에서_직전_DB는_읽기_전용_비교에만_쓴다(review_raw, tmp_path, monkeypatch):
+    mission = "java-racingcar"
+    raw_root = tmp_path / "collected"
+    shutil.copytree(review_raw, raw_root / mission)
+    reviews_path = raw_root / mission / "review/1.json"
+    reviews = json.loads(reviews_path.read_text())
+    reviews[0]["body"] = "책임을 나누는 설계의 장단점을 함께 이야기해 주세요."
+    reviews_path.write_text(json.dumps(reviews))
+    new_db, previous = tmp_path / "new.db", tmp_path / "previous.db"
+    # 직전 자료에는 비교에 필요한 집계 열만 있다. 최신 스키마의 입력으로 재사용할 수 없다.
+    with sqlite3.connect(previous) as conn:
+        conn.execute("CREATE TABLE pull_requests (mission_id TEXT)")
+        conn.execute("CREATE TABLE comments (mission_id TEXT)")
+        conn.execute("CREATE TABLE previous_only (value TEXT)")
+        conn.execute("INSERT INTO pull_requests VALUES (?)", (mission,))
+        conn.execute("INSERT INTO comments VALUES (?)", (mission,))
+    previous_hash = hashlib.sha256(previous.read_bytes()).hexdigest()
+    monkeypatch.setattr(cli, "RAW_ROOT", raw_root)
+    monkeypatch.setenv("CHOLOG_DB_PATH", str(new_db))
+
+    for command in ("load", "tag", "check"):
+        args = ["pipeline", command, mission]
+        if command == "check":
+            args += ["--previous", str(previous)]
+        monkeypatch.setattr("sys.argv", args)
+        assert cli.main() == 0
+
+    with sqlite3.connect(new_db) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM pull_requests").fetchone() == (4,)
+        assert conn.execute("SELECT in_reply_to_id FROM comments WHERE github_id=11").fetchone() == (10,)
+        assert conn.execute("SELECT COUNT(*) FROM comments WHERE github_id=10").fetchone() == (2,)
+        assert conn.execute("SELECT COUNT(*) FROM comment_topics").fetchone()[0] > 0
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name='previous_only'").fetchone() is None
+    assert hashlib.sha256(previous.read_bytes()).hexdigest() == previous_hash
