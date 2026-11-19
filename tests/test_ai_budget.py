@@ -42,3 +42,15 @@ def test_다시_실행해도_앞선_누적을_이어서_센다(tmp_path):
     assert again.total == pytest.approx(0.5)
     with pytest.raises(BudgetReached):
         again.acquire()
+
+
+def test_미리_잡아_두는_비용은_같은_종류의_호출로_정한다(tmp_path):
+    budget = Budget("subtopics:test", 1.5, tmp_path / "log.json")
+    budget.acquire("candidates")
+    budget.record("큰 호출", {"total_cost_usd": 0.6}, None, 1.0, "candidates")
+
+    # 작은 호출은 큰 호출 비용(0.6)이 아니라 기본값(0.05)으로 잡는다.
+    for _ in range(5):
+        budget.acquire("assign")
+    with pytest.raises(BudgetReached):
+        budget.acquire("candidates")
