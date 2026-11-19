@@ -12,6 +12,6 @@ def test_도구_입력_스키마에_계산기_미션이_보인다():
 
     from cholog_mcp.server import create_server
 
-    (tool,) = anyio.run(create_server().list_tools)
+    tool = next(t for t in anyio.run(create_server().list_tools) if t.name == "get_repeated_feedback")
 
     assert "java-calculator" in tool.input_schema["properties"]["mission"]["enum"]

@@ -69,8 +69,11 @@ def _conn() -> sqlite3.Connection:
 
 def _tags(conn: sqlite3.Connection) -> set[tuple[str, int, str, str]]:
     """(kind, GitHub ID, 주제, 방법). comments.id 대신 GitHub ID로 본다."""
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(comments)")}
+    github_id = "c.github_id" if "github_id" in columns else "c.id"
     return set(conn.execute(
-        "SELECT c.kind, c.id, ct.topic_id, ct.method FROM comment_topics ct JOIN comments c ON c.id = ct.comment_id"
+        f"SELECT c.kind, {github_id}, ct.topic_id, ct.method FROM comment_topics ct "
+        "JOIN comments c ON c.id = ct.comment_id"
     ))
 
 
