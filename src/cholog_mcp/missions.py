@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 # 도구가 입력으로 받는 값. 도구의 입력 스키마에 그대로 드러난다.
-MissionId = Literal["java-racingcar", "java-lotto"]
+MissionId = Literal["java-racingcar", "java-lotto", "java-calculator"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,11 @@ MISSIONS = {
             id="java-lotto",
             repo="next-step/java-lotto-clean-playground",
             name="자바 로또",
+        ),
+        Mission(
+            id="java-calculator",
+            repo="cho-log/java-calculator-unit-playground",
+            name="자바 계산기",
         ),
     )
 }
