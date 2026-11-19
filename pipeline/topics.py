@@ -18,15 +18,21 @@ class Concept:
 
 @dataclass(frozen=True)
 class Subtopic:
-    """gate에 걸린 리뷰 중 pattern에도 걸리면 붙는다. 붙으면 parent_id의 개념도 함께 붙는다."""
+    """gate에 걸린 리뷰 중 pattern에도 걸리면 붙는다. 붙으면 parent_id의 개념도 함께 붙는다.
+
+    gate나 pattern이 없으면 정규식으로는 붙지 않고, AI 분류 고정본(pipeline/ai_topics/)으로만 붙는다.
+    """
 
     id: str
     name: str
     parent_id: str
     mission_id: str
-    gate: re.Pattern[str]
-    pattern: re.Pattern[str]
+    gate: re.Pattern[str] | None = None
+    pattern: re.Pattern[str] | None = None
 
+
+# 개념 목록을 바꾸면 날짜를 고친다. AI 분류 고정본이 어느 목록으로 분류됐는지 확인하는 데 쓴다.
+CONCEPTS_VERSION = "2026-11-12"
 
 CONCEPTS = (
     Concept("test-writing", "테스트 작성 / 보강",
