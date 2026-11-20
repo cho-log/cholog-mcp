@@ -16,6 +16,7 @@
 | `docs/` | 도구 명세(`tool-spec.md`), 결정과 이유(`decisions.md`), 기록(`records/`) |
 | `src/cholog_mcp/` | MCP 서버 |
 | `pipeline/` | PR·리뷰 데이터 수집과 SQLite 적재 |
+| `pipeline/ai_topics/` | 미션별 AI 분류 고정본 (`<mission>.json`). 리뷰 원문 없이 코멘트 키와 개념 id만 둔다. git에 올린다 |
 | `data/` | 수집한 원본과 SQLite 파일. git에 올리지 않는다 |
 | `tests/` | 테스트 |
 | `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
@@ -39,10 +40,14 @@
 | `src/cholog_mcp/__init__.py` | 서버를 띄운다. `main`은 stdio, `main_http`는 HTTP |
 | `src/cholog_mcp/config.py` | 실행 환경에서 받는 설정 (DB 경로, HTTP 주소와 허용 Host) |
 | `src/cholog_mcp/missions.py` | 지원하는 미션 목록 |
-| `pipeline/topics.py` | 키워드 분류에 쓰는 주제 사전 |
-| `pipeline/tagger.py` | 리뷰에 주제를 붙여 `comment_topics`에 쓴다 |
+| `pipeline/topics.py` | 주제 사전 (키워드 분류와 AI 분류가 같이 쓰는 개념 목록과 세부 지적) |
+| `pipeline/tagger.py` | 리뷰에 주제를 붙여 `comment_topics`에 쓴다. 고정본에 있으면 그 주제, 없으면 키워드 |
+| `pipeline/ai_store.py` | AI 분류 고정본 파일을 읽고 쓴다 |
+| `scripts/ai_classify.py` | 미션의 리뷰어 코멘트를 AI로 분류하고(`run`) 고정본으로 저장한다(`save`) |
+| `scripts/ai_budget.py` | AI 호출 비용 상한과 비용 기록 (`data/ai-cost-log.json`) |
 
 도구는 `comment_topics` 테이블만 읽는다. 분류 방법을 바꿀 때 도구 코드를 고치지 않는다.
+`tag`와 배포는 AI를 부르지 않는다. AI는 고정본을 만들 때만 사람이 명령으로 부른다.
 
 ## 문서
 
