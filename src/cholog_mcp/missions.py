@@ -24,7 +24,7 @@ MISSIONS = {
         ),
         Mission(
             id="java-lotto",
-            repo="next-step/java-lotto-clean-playground",
+            repo="cho-log/java-lotto-clean-playground",
             name="자바 로또",
         ),
         Mission(
