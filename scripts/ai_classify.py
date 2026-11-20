@@ -17,7 +17,7 @@ from datetime import date
 from pathlib import Path
 
 from pipeline.ai_store import AiTopics, save_ai_topics
-from pipeline.topics import CONCEPTS, CONCEPTS_VERSION, Concept
+from pipeline.topics import CONCEPTS, CONCEPTS_VERSION
 from scripts.ai_budget import Budget, BudgetReached, call_claude
 
 BATCH = 20
@@ -27,12 +27,8 @@ MODEL = "opus"
 DB = Path("data/cholog.db")
 OUT = Path("data/ai")
 
-# 프롬프트를 바꾸면 PROMPT_VERSION을 고친다. 고정본의 prompt_version에 적힌다.
-# - 2026-11-12: AI 분류 시험과 같은 프롬프트. 개념은 id와 이름만 준다 (v1)
-# - v2-설명: 개념마다 기준·예시·이웃 개념과의 차이(topics.Description)를 더 준다
-PROMPT_V1 = "2026-11-12"
-PROMPT_V2 = "v2-설명"
-PROMPT_VERSION = PROMPT_V2
+# 2026-11-12 AI 분류 시험과 같은 프롬프트. 바꾸면 PROMPT_VERSION을 고친다.
+PROMPT_VERSION = "2026-11-12"
 
 SYSTEM_PROMPT = """너는 Java 미션 PR에 리뷰어가 남긴 코드 리뷰 코멘트를 주제로 분류한다.
 각 코멘트에 아래 개념 목록에서 해당하는 개념 id를 붙인다.
@@ -42,7 +38,7 @@ SYSTEM_PROMPT = """너는 Java 미션 PR에 리뷰어가 남긴 코드 리뷰 �
 - 칭찬만 있으면 개념 이름이 나와도 빈 배열. "많이 지적받는 게 뭐야"에 답하려는 분류이므로 지적만 센다.
 - 목록에 맞는 개념이 없으면 빈 배열. 목록에 없는 id는 만들지 않는다.
 
-개념 목록 ({concepts_header})
+개념 목록 (id: 이름)
 {concepts}
 
 출력
@@ -55,25 +51,9 @@ USER_PROMPT = """아래 코멘트 {count}개를 분류해 줘. 각 항목은 코
 {comments}"""
 
 
-def concept_lines(concept: Concept, version: str) -> str:
-    line = f"- {concept.id}: {concept.name}"
-    if version == PROMPT_V1 or concept.description is None:
-        return line
-    description = concept.description
-    return "\n".join([
-        line,
-        f"  기준: {description.definition}",
-        f"  예: {description.example}",
-        f"  헷갈리는 개념: {description.contrast}",
-    ])
-
-
-def system_prompt(version: str = PROMPT_VERSION) -> str:
-    if version not in (PROMPT_V1, PROMPT_V2):
-        raise ValueError(f"모르는 프롬프트 버전: {version}")
-    header = "id: 이름" if version == PROMPT_V1 else "id: 이름, 아래 줄에 기준·예시·헷갈리는 개념과의 차이"
-    concepts = "\n".join(concept_lines(concept, version) for concept in CONCEPTS)
-    return SYSTEM_PROMPT.format(concepts_header=header, concepts=concepts)
+def system_prompt() -> str:
+    concepts = "\n".join(f"- {concept.id}: {concept.name}" for concept in CONCEPTS)
+    return SYSTEM_PROMPT.format(concepts=concepts)
 
 
 def parse(text: str) -> dict:
