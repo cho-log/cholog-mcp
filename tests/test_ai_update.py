@@ -18,6 +18,7 @@ from scripts.ai_classify import PROMPT_VERSION, edited_after, update
 
 MISSION = "java-racingcar"
 COST = 0.05
+SYNCED_AT = "2026-03-20T10:00:00+09:00"  # 테스트 DB의 수집 시각
 
 
 @pytest.fixture
@@ -25,7 +26,8 @@ def db(tmp_path: Path) -> Path:
     path = tmp_path / "cholog.db"
     conn = sqlite3.connect(path)
     create_schema(conn)
-    conn.execute("INSERT INTO missions (id, repo, name) VALUES (?, 'owner/repo', '테스트 미션')", (MISSION,))
+    conn.execute("INSERT INTO missions (id, repo, name, synced_at) VALUES (?, 'owner/repo', '테스트 미션', ?)",
+                 (MISSION, SYNCED_AT))
     conn.commit()
     conn.close()
     return path
@@ -74,7 +76,8 @@ def _save(ai_dir: Path, entries: dict) -> None:
     save_ai_topics(AiTopics(mission_id=MISSION, model="claude-opus-test", entries=entries), ai_dir)
 
 
-OLD = Entry(["naming"], "2026-03-10", "old-prompt", "old-concepts")
+# 3월 10일에 받은 본문을 3월 15일에 분류한 옛 항목
+OLD = Entry(["naming"], "2026-03-15", "2026-03-10", "old-prompt", "old-concepts")
 
 
 def test_고정본에_없는_코멘트만_보내고_기존_항목은_그대로_둔다(db, ai_dir, tmp_path, sent):
@@ -94,10 +97,11 @@ def test_고정본에_없는_코멘트만_보내고_기존_항목은_그대로_�
     assert added.topics == ["responsibility"]
     assert (added.prompt_version, added.concepts_version) == (PROMPT_VERSION, CONCEPTS_VERSION)
     assert "T" in added.classified_at  # 새 항목은 날짜가 아니라 시각을 남긴다
+    assert added.synced_at == SYNCED_AT
 
 
-def test_분류한_뒤_고친_코멘트는_다시_보내_덮어쓴다(db, ai_dir, tmp_path, sent):
-    _add(db, 1, "2026-03-12T00:00:00Z")
+def test_본문을_수집한_뒤_고친_코멘트는_다시_보내_덮어쓴다(db, ai_dir, tmp_path, sent):
+    _add(db, 1, "2026-03-12T00:00:00Z")  # 분류(3월 15일)보다는 앞서지만 수집(3월 10일)보다 늦게 고쳤다
     _save(ai_dir, {("review", 1): OLD})
 
     summary = _run(db, ai_dir, tmp_path)
@@ -107,10 +111,12 @@ def test_분류한_뒤_고친_코멘트는_다시_보내_덮어쓴다(db, ai_dir
     entry = load_ai_topics(MISSION, ai_dir).entries[("review", 1)]
     assert entry.topics == ["responsibility"]
     assert entry.prompt_version == PROMPT_VERSION
+    assert entry.synced_at == SYNCED_AT
+    assert entry.classified_at != OLD.classified_at
 
 
-def test_분류_시각이_날짜뿐이면_그날_안에_고친_것은_다시_보내지_않는다(db, ai_dir, tmp_path, sent):
-    _add(db, 1, "2026-03-10T14:00:00Z")  # 한국 시간 3월 10일 23시: 분류한 날과 같은 날
+def test_수집_시각이_날짜뿐이면_그날_안에_고친_것은_다시_보내지_않는다(db, ai_dir, tmp_path, sent):
+    _add(db, 1, "2026-03-10T14:00:00Z")  # 한국 시간 3월 10일 23시: 수집한 날과 같은 날
     _add(db, 2, "2026-03-10T16:00:00Z")  # 한국 시간 3월 11일 1시: 다음 날
     _save(ai_dir, {("review", 1): OLD, ("review", 2): OLD})
 
@@ -119,7 +125,7 @@ def test_분류_시각이_날짜뿐이면_그날_안에_고친_것은_다시_보
     assert sent == [2]
 
 
-def test_고친_시각은_분류_시각과_초_단위로_비교한다():
+def test_고친_시각은_수집_시각과_초_단위로_비교한다():
     assert edited_after("2026-03-10T05:00:01Z", "2026-03-10T14:00:00+09:00")
     assert not edited_after("2026-03-10T05:00:00Z", "2026-03-10T14:00:00+09:00")
 
@@ -170,12 +176,35 @@ def test_고정본이_없는_미션은_모든_코멘트를_보내_새로_만든�
     assert fixed.model == "claude-opus-test"
 
 
+def test_수집하는_중에_고친_코멘트는_다시_실행해도_또_보내지_않는다(db, ai_dir, tmp_path, sent):
+    _add(db, 1, "2026-03-20T02:00:00Z")  # 한국 시간 11시: 수집을 시작한 10시보다 늦다. DB의 본문이 이미 수정본이다
+    _run(db, ai_dir, tmp_path)
+    assert load_ai_topics(MISSION, ai_dir).entries[("review", 1)].synced_at == "2026-03-20T02:00:00Z"
+    sent.clear()
+
+    _run(db, ai_dir, tmp_path)
+
+    assert sent == []
+
+
+def test_DB에_수집_시각이_없으면_멈춘다(db, ai_dir, tmp_path, sent):
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE missions SET synced_at = NULL")
+    conn.commit()
+    conn.close()
+    _add(db, 1)
+
+    with pytest.raises(SystemExit, match="synced_at"):
+        _run(db, ai_dir, tmp_path)
+    assert sent == []
+
+
 def test_dry_run은_AI를_부르지_않고_대상_수만_센다(db, ai_dir, tmp_path, sent):
     _add(db, 1, "2026-03-12T00:00:00Z")  # 고친 코멘트
     _add(db, 2)  # 새 코멘트
     _add(db, 3)  # 옛 버전 코멘트
     _add(db, 4)  # 지금 버전 코멘트
-    current = Entry([], "2026-03-10", PROMPT_VERSION, CONCEPTS_VERSION)
+    current = Entry([], "2026-03-15", "2026-03-10", PROMPT_VERSION, CONCEPTS_VERSION)
     _save(ai_dir, {("review", 1): OLD, ("review", 3): OLD, ("review", 4): current})
     before = (ai_dir / f"{MISSION}.json").read_text()
 

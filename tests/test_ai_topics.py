@@ -21,7 +21,7 @@ def _ai_topics(topics: dict[tuple[str, int], list[str]]) -> AiTopics:
     return AiTopics(
         mission_id=MISSION.id,
         model="test-model",
-        entries={key: Entry(ids, "2026-11-20", "test", "test") for key, ids in topics.items()},
+        entries={key: Entry(ids, "2026-11-20", "2026-11-19T10:00:00+09:00", "test", "test") for key, ids in topics.items()},
     )
 
 
@@ -89,7 +89,8 @@ def test_고정본에는_리뷰_원문을_넣지_않는다(ai_dir):
     data = json.loads(path.read_text(encoding="utf-8"))
     assert set(data) == {"mission_id", "model", "topics"}
     assert data["topics"] == {"review:10": {
-        "topics": ["responsibility"], "classified_at": "2026-11-20", "prompt_version": "test", "concepts_version": "test",
+        "topics": ["responsibility"], "classified_at": "2026-11-20", "synced_at": "2026-11-19T10:00:00+09:00",
+        "prompt_version": "test", "concepts_version": "test",
     }}
 
 
@@ -113,7 +114,8 @@ def test_버전이_파일_머리에만_있는_옛_고정본은_머리의_값을_
     loaded = load_ai_topics(MISSION.id, ai_dir)
 
     assert loaded.topics == {("review", 10): ["responsibility", "naming"], ("issue", 20): []}
-    assert all((e.classified_at, e.prompt_version, e.concepts_version) == ("2026-11-12", "p1", "c1")
+    # 옛 형식에는 수집 시각이 없어서 분류한 날로 둔다.
+    assert all((e.classified_at, e.synced_at, e.prompt_version, e.concepts_version) == ("2026-11-12", "2026-11-12", "p1", "c1")
                for e in loaded.entries.values())
 
 
