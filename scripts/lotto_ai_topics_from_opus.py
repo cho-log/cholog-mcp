@@ -12,12 +12,13 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from pipeline.ai_store import AiTopics, save_ai_topics
+from pipeline.ai_store import AiTopics, Entry, save_ai_topics
 from pipeline.topics import CONCEPTS
 
 MISSION = "java-lotto"
 SOURCE = Path("data/ai/java-lotto-opus.json")
 EARLIER = Path("data/labels/ai/opus-v1-run1.json")
+SYNCED_AT = "2026-11-05T14:07:26+09:00"  # 고정본을 만든 DB의 수집 시각 (missions.synced_at)
 DB = Path("data/cholog.db")
 
 
@@ -52,11 +53,9 @@ def main() -> None:
 
     path = save_ai_topics(AiTopics(
         mission_id=MISSION,
-        classified_at="2026-11-12",
         model="claude-opus-5-5",
-        prompt_version="2026-11-12",
-        concepts_version="2026-11-12",
-        topics={(kinds[gid], gid): list(topics) for gid, topics in source.items()},
+        entries={(kinds[gid], gid): Entry(list(topics), "2026-11-12", SYNCED_AT, "2026-11-12", "2026-11-12")
+                 for gid, topics in source.items()},
     ))
     print(f"저장: {path}")
 
