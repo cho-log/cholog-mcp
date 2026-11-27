@@ -4,9 +4,10 @@ AI는 같은 코멘트도 돌릴 때마다 조금씩 다르게 분류한다. 그
 tag는 AI를 다시 부르지 않고 이 파일을 읽는다.
 
 - 키는 (kind, github_id)다. comments.id는 적재 방식에 따라 바뀔 수 있어서 쓰지 않는다.
-- 값은 개념·세부 지적 id 목록과, 그 코멘트를 분류한 시각·프롬프트 버전·개념 목록 버전이다.
-  빈 목록은 "AI가 보고 주제 없음으로 판단했다"는 뜻이다.
-- 분류 시각은 날짜(2026-11-12)이거나 시각(2026-11-27T14:03:12+09:00)이다. 날짜만 있는 것은
+- 값은 개념·세부 지적 id 목록과, 그 코멘트를 분류한 시각·AI가 본 본문의 수집 시각·프롬프트 버전·
+  개념 목록 버전이다. 빈 목록은 "AI가 보고 주제 없음으로 판단했다"는 뜻이다.
+- 분류 시각은 기록용이다. 다시 분류할지는 수집 시각과 comments.updated_at을 비교해 정한다.
+- 두 시각은 날짜(2026-11-12)이거나 시각(2026-11-27T14:03:12+09:00)이다. 분류 시각이 날짜뿐인 것은
   코멘트마다 버전을 남기기 전에 만든 항목이다.
 - 리뷰 원문은 넣지 않는다 (공개 저장소).
 """
@@ -24,6 +25,7 @@ Key = tuple[str, int]
 class Entry:
     topics: list[str]
     classified_at: str
+    synced_at: str
     prompt_version: str
     concepts_version: str
 
@@ -47,6 +49,7 @@ def load_ai_topics(mission_id: str, directory: Path = AI_TOPICS_DIR) -> AiTopics
     """미션의 고정본을 읽는다. 파일이 없으면 None.
 
     버전이 파일 머리에만 있는 옛 형식(값이 개념 id 목록)도 읽는다. 머리의 값을 각 코멘트에 붙인다.
+    옛 형식에는 수집 시각이 없어서 분류한 날로 둔다. AI가 본 본문은 그날이나 그 전에 받은 것이다.
     """
     path = ai_topics_path(mission_id, directory)
     if not path.exists():
@@ -56,11 +59,12 @@ def load_ai_topics(mission_id: str, directory: Path = AI_TOPICS_DIR) -> AiTopics
     for key, value in data["topics"].items():
         kind, github_id = key.split(":")
         if isinstance(value, list):
-            value = {"topics": value, "classified_at": data["classified_at"],
+            value = {"topics": value, "classified_at": data["classified_at"], "synced_at": data["classified_at"],
                      "prompt_version": data["prompt_version"], "concepts_version": data["concepts_version"]}
         entries[(kind, int(github_id))] = Entry(
             topics=list(value["topics"]),
             classified_at=value["classified_at"],
+            synced_at=value["synced_at"],
             prompt_version=value["prompt_version"],
             concepts_version=value["concepts_version"],
         )
@@ -75,7 +79,7 @@ def save_ai_topics(ai_topics: AiTopics, directory: Path = AI_TOPICS_DIR) -> Path
     lines = [f"  {json.dumps(name)}: {json.dumps(value, ensure_ascii=False)}," for name, value in header.items()]
     entries = []
     for (kind, github_id), entry in sorted(ai_topics.entries.items()):
-        value = {"topics": sorted(entry.topics), "classified_at": entry.classified_at,
+        value = {"topics": sorted(entry.topics), "classified_at": entry.classified_at, "synced_at": entry.synced_at,
                  "prompt_version": entry.prompt_version, "concepts_version": entry.concepts_version}
         entries.append(f"    {json.dumps(f'{kind}:{github_id}')}: {json.dumps(value, ensure_ascii=False)}")
     body = "{\n" + "\n".join(lines) + '\n  "topics": {\n' + ",\n".join(entries) + "\n  }\n}\n"
