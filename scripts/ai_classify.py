@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path
 
-from pipeline.ai_store import AiTopics, save_ai_topics
+from pipeline.ai_store import AiTopics, Entry, save_ai_topics
 from pipeline.topics import CONCEPTS, CONCEPTS_VERSION
 from scripts.ai_budget import Budget, BudgetReached, call_claude
 
@@ -156,13 +156,11 @@ def cmd_save(args) -> None:
             topics[(record["kind"], record["github_id"])] = record["topics"]
             invalid.extend(record["invalid"])
     print(f"묶음 {len(files)}/{expected_batches}개, 코멘트 {len(topics)}/{len(comments)}개, 버린 id {len(invalid)}개")
+    classified_at = args.date or date.today().isoformat()
     path = save_ai_topics(AiTopics(
         mission_id=args.mission,
-        classified_at=args.date or date.today().isoformat(),
         model=",".join(sorted(m for m in models if MODEL in m)) or MODEL,
-        prompt_version=PROMPT_VERSION,
-        concepts_version=CONCEPTS_VERSION,
-        topics=topics,
+        entries={key: Entry(ids, classified_at, PROMPT_VERSION, CONCEPTS_VERSION) for key, ids in topics.items()},
     ))
     print(f"저장: {path}")
 
