@@ -8,7 +8,7 @@ import pytest
 
 import pipeline.tagger
 from cholog_mcp.missions import Mission
-from pipeline.ai_store import AiTopics, load_ai_topics, save_ai_topics
+from pipeline.ai_store import AiTopics, Entry, ai_topics_path, load_ai_topics, save_ai_topics
 from pipeline.load import load_mission
 from pipeline.schema import create_schema
 from pipeline.tagger import tag_mission
@@ -20,11 +20,8 @@ MISSION = Mission(id="java-racingcar", repo="owner/repo", name="테스트 미션
 def _ai_topics(topics: dict[tuple[str, int], list[str]]) -> AiTopics:
     return AiTopics(
         mission_id=MISSION.id,
-        classified_at="2026-11-20",
         model="test-model",
-        prompt_version="test",
-        concepts_version="test",
-        topics=topics,
+        entries={key: Entry(ids, "2026-11-20", "test", "test") for key, ids in topics.items()},
     )
 
 
@@ -90,8 +87,34 @@ def test_고정본에는_리뷰_원문을_넣지_않는다(ai_dir):
     path = save_ai_topics(_ai_topics({("review", 10): ["responsibility"]}), ai_dir)
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert set(data) == {"mission_id", "classified_at", "model", "prompt_version", "concepts_version", "topics"}
-    assert data["topics"] == {"review:10": ["responsibility"]}
+    assert set(data) == {"mission_id", "model", "topics"}
+    assert data["topics"] == {"review:10": {
+        "topics": ["responsibility"], "classified_at": "2026-11-20", "prompt_version": "test", "concepts_version": "test",
+    }}
+
+
+def test_고정본은_코멘트_하나를_한_줄에_쓴다(ai_dir):
+    path = save_ai_topics(_ai_topics({("review", 10): ["responsibility"], ("review", 11): []}), ai_dir)
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert sum('"review:10"' in line for line in lines) == 1
+    assert any('"review:10"' in line and '"classified_at"' in line and '"concepts_version"' in line for line in lines)
+
+
+def test_버전이_파일_머리에만_있는_옛_고정본은_머리의_값을_각_코멘트에_붙여_읽는다(ai_dir):
+    old = {
+        "mission_id": MISSION.id, "classified_at": "2026-11-12", "model": "test-model",
+        "prompt_version": "p1", "concepts_version": "c1",
+        "topics": {"review:10": ["responsibility", "naming"], "issue:20": []},
+    }
+    ai_topics_path(MISSION.id, ai_dir).parent.mkdir(parents=True)
+    ai_topics_path(MISSION.id, ai_dir).write_text(json.dumps(old), encoding="utf-8")
+
+    loaded = load_ai_topics(MISSION.id, ai_dir)
+
+    assert loaded.topics == {("review", 10): ["responsibility", "naming"], ("issue", 20): []}
+    assert all((e.classified_at, e.prompt_version, e.concepts_version) == ("2026-11-12", "p1", "c1")
+               for e in loaded.entries.values())
 
 
 def test_고정본이_없으면_None(ai_dir):
