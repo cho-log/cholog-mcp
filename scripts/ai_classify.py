@@ -1,9 +1,12 @@
 """미션의 리뷰어 코멘트를 claude -p로 개념 분류하고, 결과를 고정본으로 저장한다.
 
-    uv run python -m scripts.ai_classify run java-calculator --limit 3   # 묶음마다 저장. 끊기면 다시 실행해 이어서 돌린다
-    uv run python -m scripts.ai_classify save java-calculator            # 묶음을 모아 pipeline/ai_topics/<mission>.json으로 고정
+    uv run python -m scripts.ai_classify run java-calculator --limit 3      # 묶음마다 저장. 끊기면 다시 실행해 이어서 돌린다
+    uv run python -m scripts.ai_classify save java-calculator               # 묶음을 모아 pipeline/ai_topics/<mission>.json으로 고정
+    uv run python -m scripts.ai_classify update java-calculator --limit 1   # 고정본에 없거나 분류 뒤 고친 코멘트만 분류해 덧붙인다
+    uv run python -m scripts.ai_classify update java-calculator --dry-run   # AI를 부르지 않고 대상 수와 예상 비용만 본다
 
-입력은 코멘트 id(GitHub ID), 파일 경로(path), 원문(body)뿐이다. 묶음 결과는 data/ai/<mission>/batches/에 둔다 (git 밖).
+입력은 코멘트 id(GitHub ID), 파일 경로(path), 원문(body)뿐이다. run의 묶음 결과는 data/ai/<mission>/batches/에 둔다 (git 밖).
+update는 묶음마다 고정본에 바로 쓴다. 끊겨도 다시 실행하면 이미 분류한 코멘트는 대상에서 빠진다.
 비용은 scripts/ai_budget.py의 규칙을 따른다.
 """
 
@@ -11,14 +14,15 @@ import argparse
 import json
 import re
 import sqlite3
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from pipeline.ai_store import AiTopics, Entry, save_ai_topics
+from pipeline.ai_store import AI_TOPICS_DIR, AiTopics, Entry, load_ai_topics, save_ai_topics
 from pipeline.topics import CONCEPTS, CONCEPTS_VERSION
-from scripts.ai_budget import Budget, BudgetReached, call_claude
+from scripts.ai_budget import COST_LOG, Budget, BudgetReached, call_claude
 
 BATCH = 20
 TRIES = 2  # 실패한 묶음은 한 번만 다시 보낸다
@@ -26,6 +30,9 @@ WORKERS = 5
 MODEL = "opus"
 DB = Path("data/cholog.db")
 OUT = Path("data/ai")
+USD_PER_COMMENT = 1.5 / 1000  # 실측: 로또 3,414개 5.38달러, 계산기 1,049개 1.50달러
+# 분류 시각은 한국 시간으로 남긴다. 날짜만 있는 옛 항목도 한국 날짜다.
+KST = timezone(timedelta(hours=9))
 
 # 2026-11-12 AI 분류 시험과 같은 프롬프트. 바꾸면 PROMPT_VERSION을 고친다.
 PROMPT_VERSION = "2026-11-12"
@@ -70,13 +77,13 @@ def reviewer_comments(mission_id: str, db: Path = DB) -> list[dict]:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(comments)")}
     github_id = "github_id" if "github_id" in columns else "id"
     rows = conn.execute(
-        f"SELECT kind, {github_id}, pr_number, path, body FROM comments "
+        f"SELECT kind, {github_id}, pr_number, path, body, updated_at FROM comments "
         "WHERE mission_id = ? AND is_pr_author = 0 ORDER BY 1, 2",
         (mission_id,),
     ).fetchall()
     conn.close()
-    return [{"kind": kind, "github_id": gid, "pr": pr, "path": path, "body": body}
-            for kind, gid, pr, path, body in rows]
+    return [{"kind": kind, "github_id": gid, "pr": pr, "path": path, "body": body, "updated_at": updated}
+            for kind, gid, pr, path, body, updated in rows]
 
 
 def batch_dir(mission_id: str) -> Path:
@@ -165,6 +172,94 @@ def cmd_save(args) -> None:
     print(f"저장: {path}")
 
 
+def edited_after(updated_at: str, classified_at: str) -> bool:
+    """코멘트가 분류한 뒤에 고쳐졌는지. 분류 시각이 날짜뿐이면 날짜로 비교해, 그날 안에 고친 것은 보지 않는다."""
+    updated = datetime.fromisoformat(updated_at)
+    if len(classified_at) == len("2026-11-12"):
+        return updated.astimezone(KST).date() > date.fromisoformat(classified_at)
+    return updated > datetime.fromisoformat(classified_at)
+
+
+def update_targets(comments: list[dict], fixed: AiTopics) -> tuple[list[dict], list[dict], int]:
+    """(새 코멘트, 분류 뒤 고친 코멘트, 옛 버전 코멘트 수). 옛 버전 수에는 이번에 다시 분류할 코멘트를 넣지 않는다."""
+    new, edited, stale = [], [], 0
+    for comment in comments:
+        entry = fixed.entries.get((comment["kind"], comment["github_id"]))
+        if entry is None:
+            new.append(comment)
+        elif edited_after(comment["updated_at"], entry.classified_at):
+            edited.append(comment)
+        elif (entry.prompt_version, entry.concepts_version) != (PROMPT_VERSION, CONCEPTS_VERSION):
+            stale += 1
+    return new, edited, stale
+
+
+def update(mission_id: str, limit: float | None, dry_run: bool = False, db: Path = DB,
+           directory: Path = AI_TOPICS_DIR, cost_log: Path = COST_LOG, workers: int = WORKERS) -> dict:
+    """고정본에 없거나 분류 뒤 고친 리뷰어 코멘트만 분류해 고정본에 덧붙인다. 다른 항목은 건드리지 않는다."""
+    comments = reviewer_comments(mission_id, db)
+    fixed = load_ai_topics(mission_id, directory) or AiTopics(mission_id=mission_id, model="")
+    new, edited, stale = update_targets(comments, fixed)
+    todo = new + edited
+    summary = {"new": len(new), "edited": len(edited), "stale": stale, "saved": 0, "invalid": 0,
+               "failed": [], "stopped": 0, "total_usd": 0.0}
+    print(f"{mission_id}: 리뷰어 코멘트 {len(comments)}개, 고정본 {len(fixed.entries)}개", flush=True)
+    print(f"  새 코멘트 {len(new)}개, 분류 뒤 고친 코멘트 {len(edited)}개 → 보낼 코멘트 {len(todo)}개 "
+          f"(예상 약 {len(todo) * USD_PER_COMMENT:.2f}달러)", flush=True)
+    print(f"  옛 버전 코멘트 {stale}개 (다시 분류하지 않는다. 지금 프롬프트 {PROMPT_VERSION}, 개념 목록 {CONCEPTS_VERSION})",
+          flush=True)
+    if dry_run or not todo:
+        return summary
+
+    concept_ids = {c.id for c in CONCEPTS}
+    system = system_prompt()
+    batches = [todo[i:i + BATCH] for i in range(0, len(todo), BATCH)]
+    budget = Budget(f"update:{mission_id}", limit, cost_log)
+    lock = threading.Lock()
+    started = time.time()
+
+    def work(n: int) -> None:
+        batch = batches[n]
+        try:
+            labels, models = classify_batch(budget, f"{mission_id} update #{n}", system, batch)
+        except BudgetReached as reached:
+            with lock:
+                summary["stopped"] += 1
+            print(f"멈춤 (비용 상한) #{n}: {reached}", flush=True)
+            return
+        except RuntimeError as error:
+            with lock:
+                summary["failed"].append({"batch": n, "error": str(error)})
+            print(f"실패 #{n}: {error}", flush=True)
+            return
+        classified_at = datetime.now(KST).isoformat(timespec="seconds")
+        with lock:
+            for comment in batch:
+                topics = labels[str(comment["github_id"])]
+                topics = topics if isinstance(topics, list) else []
+                summary["invalid"] += sum(1 for t in topics if t not in concept_ids)
+                fixed.entries[(comment["kind"], comment["github_id"])] = Entry(
+                    sorted({t for t in topics if t in concept_ids}), classified_at, PROMPT_VERSION, CONCEPTS_VERSION)
+            known = {m for m in fixed.model.split(",") if m}
+            fixed.model = ",".join(sorted(known | {m for m in models if MODEL in m})) or MODEL
+            # 묶음마다 고정본에 바로 쓴다. 끊겨도 여기까지 분류한 코멘트는 다음 실행의 대상에서 빠진다.
+            save_ai_topics(fixed, directory)
+            summary["saved"] += len(batch)
+        print(f"#{n} 저장 ({time.time() - started:.0f}s, 누적 {budget.total:.3f}달러)", flush=True)
+
+    with ThreadPoolExecutor(workers) as pool:
+        list(pool.map(work, range(len(batches))))
+    summary["total_usd"] = budget.total
+    print(f"끝: {time.time() - started:.0f}s, 고정본에 쓴 코멘트 {summary['saved']}/{len(todo)}개, "
+          f"누적 {budget.total:.3f}달러, 버린 id {summary['invalid']}개, "
+          f"실패 묶음 {len(summary['failed'])}, 상한으로 멈춘 묶음 {summary['stopped']}")
+    return summary
+
+
+def cmd_update(args) -> None:
+    update(args.mission, args.limit, args.dry_run)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -176,7 +271,14 @@ def main() -> None:
     p.add_argument("mission")
     p.add_argument("--date", help="분류 날짜 (기본: 오늘)")
     p.set_defaults(func=cmd_save)
+    p = sub.add_parser("update")
+    p.add_argument("mission")
+    p.add_argument("--limit", type=float, help="이 미션 증분 분류의 누적 비용 상한(달러). --dry-run이 아니면 꼭 준다")
+    p.add_argument("--dry-run", action="store_true", help="AI를 부르지 않고 대상 수와 예상 비용만 보여 준다")
+    p.set_defaults(func=cmd_update)
     args = parser.parse_args()
+    if args.cmd == "update" and not args.dry_run and args.limit is None:
+        parser.error("update는 --limit이 필요하다 (--dry-run일 때만 빼도 된다)")
     args.func(args)
 
 
