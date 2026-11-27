@@ -41,7 +41,61 @@ EXPECTED = {
             "random-luck-test": 9,
             "random-inherit": 8,
         },
-    }
+    },
+    # ⚠ 기준값 후보. 2026-11-20 수집분과 AI 분류 고정본(pipeline/ai_topics/java-calculator.json) 기준이고,
+    # 사람이 확인하기 전이다. 확인하면 이 줄을 고친다.
+    "java-calculator": {
+        "counts": {
+            "PR": 125,
+            "코멘트": 1721,
+            "리뷰어 코멘트": 1049,
+            "PR 작성자 본인 코멘트": 672,
+            "리뷰어 코멘트가 달린 PR": 105,
+            "리뷰어": 42,
+            "원문 링크가 없는 코멘트": 0,
+        },
+        "concept_percent": {
+            "test-writing": 72,
+            "exception": 66,
+            "naming": 58,
+            "readability": 49,
+            "formatting": 36,
+            "responsibility": 30,
+            "method-extraction": 26,
+            "access-modifier": 25,
+            "magic-number": 25,
+            "duplication": 22,
+        },
+        "concept_percent_at_least": {},
+        "subtopic_prs": {},
+    },
+    # ⚠ 기준값 후보. 2026-11-05 수집분과 AI 분류 고정본(pipeline/ai_topics/java-lotto.json, 11/12 opus 결과) 기준이고,
+    # 사람이 확인하기 전이다. 확인하면 이 줄을 고친다.
+    "java-lotto": {
+        "counts": {
+            "PR": 218,
+            "코멘트": 5711,
+            "리뷰어 코멘트": 3414,
+            "PR 작성자 본인 코멘트": 2297,
+            "리뷰어 코멘트가 달린 PR": 201,
+            "리뷰어": 92,
+            "원문 링크가 없는 코멘트": 0,
+        },
+        "concept_percent": {
+            "responsibility": 75,
+            "exception": 72,
+            "layering": 68,
+            "naming": 60,
+            "test-writing": 55,
+            "readability": 54,
+            "value-object": 54,
+            "magic-number": 47,
+            "formatting": 46,
+            "enum": 45,
+        },
+        "concept_percent_at_least": {},
+        "subtopic_prs": {},
+    },
 }
 
 
