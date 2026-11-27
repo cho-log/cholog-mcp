@@ -16,7 +16,7 @@
 | `docs/` | 도구 명세(`tool-spec.md`), 결정과 이유(`decisions.md`), 기록(`records/`) |
 | `src/cholog_mcp/` | MCP 서버 |
 | `pipeline/` | PR·리뷰 데이터 수집과 SQLite 적재 |
-| `pipeline/ai_topics/` | 미션별 AI 분류 고정본 (`<mission>.json`). 리뷰 원문 없이 코멘트 키, 개념 id, 코멘트별 분류 시각과 버전만 둔다. git에 올린다 |
+| `pipeline/ai_topics/` | 미션별 AI 분류 고정본 (`<mission>.json`). 리뷰 원문 없이 코멘트 키, 개념 id, 코멘트별 분류 시각, 수집 시각, 버전만 둔다. git에 올린다 |
 | `data/` | 수집한 원본과 SQLite 파일. git에 올리지 않는다 |
 | `tests/` | 테스트 |
 | `scripts/` | 손으로 돌려 보는 확인용 스크립트 |
